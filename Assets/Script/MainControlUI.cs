@@ -71,9 +71,12 @@ public class MainControlUI : UI_Base
         BindEvent(loadBtn.gameObject, OnLoadBtnClicked, Define.UIEvent.Click);
         BindEvent(serverToggle.gameObject, OnServerToggleClicked, Define.UIEvent.Click);
         BindEvent(clientToggle.gameObject, OnClientToggleClicked, Define.UIEvent.Click);
+        BindEvent(serverPathInput.gameObject, OnServerPathInputClicked, Define.UIEvent.Click);
+        BindEvent(cliendPathInput.gameObject, OnClientInputClicked, Define.UIEvent.Click);
         BindEvent(crtBtn.gameObject, OnEditBtnClicked, Define.UIEvent.Click);
         BindEvent(cancelBtn.gameObject, OnCancelBtnClicked, Define.UIEvent.Click);
         BindEvent(saveBtn.gameObject, OnSaveJsonBtnClicked, Define.UIEvent.Click);  
+        BindEvent(compileBtn.gameObject, OnCompileBtnClicked, Define.UIEvent.Click);
 
         // 초기 화면
         newBtn.interactable = true; 
@@ -195,6 +198,27 @@ public class MainControlUI : UI_Base
         }
     }
 
+    // Click ServerPathInput
+    public void OnServerPathInputClicked(PointerEventData eventdata)
+    {
+        string severDirPath;
+        if (OpenDirectoryExplorer(out severDirPath))
+        {
+            JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR = severDirPath;
+            GetInputField((int)InputFields.ServerPathInput).text = severDirPath;    
+        }
+    }
+    // Click ClientPathInput
+    public void OnClientInputClicked(PointerEventData eventdata)
+    {
+        string clientDirPath;
+        if (OpenDirectoryExplorer(out clientDirPath))
+        {
+            JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR = clientDirPath;
+            GetInputField((int)InputFields.ClientPathInput).text = clientDirPath;
+        }
+    }
+
     // Click EditBtn
     public void OnEditBtnClicked(PointerEventData eventData)
     {
@@ -270,6 +294,19 @@ public class MainControlUI : UI_Base
     }
 
     // Click CompileBtn
+    public void OnCompileBtnClicked(PointerEventData eventdata)
+    {
+        Debug.Log("OnCompileBtnClicked");
+
+        if (JPDCompiler.Instance.Complie())
+        {
+            Debug.Log("Compile Success!");
+        }
+        else
+        {
+            Debug.Log("Compile Fail..");
+        }
+    }
 
     // Open Window File Explorer
     public bool OpenJsonFileExplorer(out string seletecFilePath)
@@ -289,5 +326,24 @@ public class MainControlUI : UI_Base
         seletecFilePath = openFileDialog.FileName;
         Debug.Log("Selected file path: " + seletecFilePath);
         return true;
+    }
+
+    public bool OpenDirectoryExplorer(out string selectedDirectoryPath)
+    {
+        using (FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog())
+        {
+            folderBrowserDialog.Description = "Select a directory";
+            folderBrowserDialog.SelectedPath = Environment.CurrentDirectory;
+
+            if (folderBrowserDialog.ShowDialog() != DialogResult.OK)
+            {
+                selectedDirectoryPath = string.Empty;
+                return false;
+            }
+
+            selectedDirectoryPath = folderBrowserDialog.SelectedPath;
+            Debug.Log("Selected directory path: " + selectedDirectoryPath);
+            return true;
+        }
     }
 }
