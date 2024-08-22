@@ -51,6 +51,12 @@ public class JPDCompiler : MonoBehaviour
         return jpdItem;
     }
 
+    public void SaveJsonFile(string path)
+    {
+        string json = JsonUtility.ToJson(m_JPD);
+        File.WriteAllText(path, json);
+    }
+
     public static void ParseJson(string path)
     {
         //TextAsset textAsset = Resources.Load<TextAsset>(path);

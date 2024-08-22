@@ -34,6 +34,7 @@ public class MainControlUI : UI_Base
     {
         ServerPathInput,
         ClientPathInput,
+        JsonPathInput,
     }
 
     enum CompileMode
@@ -67,6 +68,7 @@ public class MainControlUI : UI_Base
         BindEvent(clientToggle.gameObject, OnClientToggleClicked, Define.UIEvent.Click);
         BindEvent(crtBtn.gameObject, OnCreateBtnClicked, Define.UIEvent.Click);
         BindEvent(cancelBtn.gameObject, OnCancelBtnClicked, Define.UIEvent.Click);
+        BindEvent(saveBtn.gameObject, OnSaveJsonBtnClicked, Define.UIEvent.Click);  
 
         // 초기 화면
         newBtn.interactable = true; 
@@ -188,6 +190,9 @@ public class MainControlUI : UI_Base
         {
 
         }
+
+        GetButton((int)Buttons.SaveBtn).interactable = true;
+        GetButton((int)Buttons.CompileBtn).interactable = true;  
     }
 
     // Click CancelBtn
@@ -209,6 +214,13 @@ public class MainControlUI : UI_Base
     }
 
     // Click SaveJsonBtn
+    public void OnSaveJsonBtnClicked(PointerEventData eventData)
+    {
+        Debug.Log("OnSaveJsonBtnClicked");
+
+        string jsonPath = GetInputField((int)InputFields.JsonPathInput).text;
+        JPDCompiler.Instance.SaveJsonFile(jsonPath);    
+    }
 
     // Click CompileBtn
 }

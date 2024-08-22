@@ -112,6 +112,7 @@ public class JRpcUI : UI_Base
         GameObject newJpdBlock = CreateJpdBlock();
         BindEvent(newJpdBlock, OnJpdBlockClicked, Define.UIEvent.Click);
         JPD_DEFINE newJpdDefine = new JPD_DEFINE();
+        JpdItems[ActiveNamespace].Defines.Add(newJpdDefine);
         JpdDefines[ActiveNamespace].Add(newJpdBlock.GetComponent<Button>(), newJpdDefine);
 
         GetButton((int)Buttons.AddBtn).gameObject.transform.SetParent(null);

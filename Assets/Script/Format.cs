@@ -1,12 +1,15 @@
 
+using System;
 using System.Collections.Generic;
 
+[Serializable]
 public class JPD_PARAM
 {
     public string type;
     public string name;
 }
 
+[Serializable]
 public class JPD_DEFINE
 {
     public string Name;
@@ -19,6 +22,7 @@ public class JPD_DEFINE
     }
 }
 
+[Serializable]
 public class JPD_ITEM
 {
     public string Namespace;
@@ -33,6 +37,7 @@ public class JPD_ITEM
     }
 }
 
+[Serializable]
 public class JPD
 {
     public List<JPD_ITEM> JpdItems;    
