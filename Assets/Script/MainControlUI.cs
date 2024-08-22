@@ -1,11 +1,16 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Net.NetworkInformation;
+using System.Windows.Forms;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Button = UnityEngine.UI.Button;
+using Object = UnityEngine.Object;
+
 
 public class MainControlUI : UI_Base
 {
@@ -15,7 +20,7 @@ public class MainControlUI : UI_Base
         LoadBtn,
         SaveBtn,
         CompileBtn,
-        CreateBtn,
+        EditBtn,
         CancelBtn,
     }
 
@@ -59,14 +64,14 @@ public class MainControlUI : UI_Base
         Toggle clientToggle = GetToggle((int)Toggles.ClientToggle);
         InputField serverPathInput = GetInputField((int)InputFields.ServerPathInput);
         InputField cliendPathInput = GetInputField((int)InputFields.ClientPathInput);
-        Button crtBtn = GetButton((int)Buttons.CreateBtn);
+        Button crtBtn = GetButton((int)Buttons.EditBtn);
         Button cancelBtn = GetButton((int)Buttons.CancelBtn);
 
         BindEvent(newBtn.gameObject, OnNewBtnClicked, Define.UIEvent.Click);
         BindEvent(loadBtn.gameObject, OnLoadBtnClicked, Define.UIEvent.Click);
         BindEvent(serverToggle.gameObject, OnServerToggleClicked, Define.UIEvent.Click);
         BindEvent(clientToggle.gameObject, OnClientToggleClicked, Define.UIEvent.Click);
-        BindEvent(crtBtn.gameObject, OnCreateBtnClicked, Define.UIEvent.Click);
+        BindEvent(crtBtn.gameObject, OnEditBtnClicked, Define.UIEvent.Click);
         BindEvent(cancelBtn.gameObject, OnCancelBtnClicked, Define.UIEvent.Click);
         BindEvent(saveBtn.gameObject, OnSaveJsonBtnClicked, Define.UIEvent.Click);  
 
@@ -95,7 +100,9 @@ public class MainControlUI : UI_Base
         GetDropdown((int)Dropdowns.CompileMode).interactable = true;
         GetToggle((int)Toggles.ServerToggle).interactable = true;
         GetToggle((int)Toggles.ClientToggle).interactable = true;
-        GetButton((int)Buttons.CreateBtn).interactable = true;  
+        GetInputField((int)InputFields.ServerPathInput).interactable = true;
+        GetInputField((int)InputFields.ClientPathInput).interactable = true;
+        GetButton((int)Buttons.EditBtn).interactable = true;  
         GetButton((int)Buttons.CancelBtn).interactable = true;  
     }
 
@@ -103,6 +110,59 @@ public class MainControlUI : UI_Base
     public void OnLoadBtnClicked(PointerEventData eventData)
     {
         Debug.Log("OnLoadBtnClicked");
+        string jsonFilePath;
+        if (OpenJsonFileExplorer(out jsonFilePath))
+        {
+            GetInputField((int)InputFields.JsonPathInput).text = jsonFilePath;
+            JPDCompiler.Instance.LoadJson(jsonFilePath);
+
+            // 컴파일 모드 설정
+            if(JPDCompiler.JPDSchema.COMPILE_MODE == "RPC")
+            {
+                GetDropdown((int)Dropdowns.CompileMode).value = 0;
+            }
+            else if(JPDCompiler.JPDSchema.COMPILE_MODE == "HeaderOnly")
+            {
+                GetDropdown((int)Dropdowns.CompileMode).value = 1;
+            }
+
+            // 서버 경로 설정
+            if(JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR != string.Empty)
+            {
+                GetToggle((int)Toggles.ServerToggle).isOn = true;
+            }
+            else
+            {
+                GetToggle((int)Toggles.ServerToggle).isOn = false;
+            }
+            GetInputField((int)InputFields.ServerPathInput).text = JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR;
+
+            // 클라이언트 경로 설정
+            if (JPDCompiler.JPDSchema.CLIENT_OUTPUT_DIR!= string.Empty)
+            {
+                GetToggle((int)Toggles.ClientToggle).isOn = true;
+            }
+            else
+            {
+                GetToggle((int)Toggles.ClientToggle).isOn = false;
+            }
+            GetInputField((int)InputFields.ClientPathInput).text = JPDCompiler.JPDSchema.CLIENT_OUTPUT_DIR;
+
+
+            GetButton((int)Buttons.NewBtn).interactable = false;
+            GetButton((int)Buttons.LoadBtn).interactable = false;
+            GetDropdown((int)Dropdowns.CompileMode).interactable = true;
+            GetToggle((int)Toggles.ServerToggle).interactable = true;
+            GetToggle((int)Toggles.ClientToggle).interactable = true;
+            GetInputField((int)InputFields.ServerPathInput).interactable = true;
+            GetInputField((int)InputFields.ClientPathInput).interactable = true;
+            GetButton((int)Buttons.EditBtn).interactable = true;
+            GetButton((int)Buttons.CancelBtn).interactable = true;
+        }
+        else
+        {
+            GetInputField((int)InputFields.JsonPathInput).text = "Enter the correct file path";
+        }
     }
 
     // Set Server Toggle
@@ -135,10 +195,10 @@ public class MainControlUI : UI_Base
         }
     }
 
-    // Click CreateBtn
-    public void OnCreateBtnClicked(PointerEventData eventData)
+    // Click EditBtn
+    public void OnEditBtnClicked(PointerEventData eventData)
     {
-        Debug.Log("OnCreateBtnClicked");
+        Debug.Log("OnEditBtnClicked");
 
         if (!GetToggle((int)Toggles.ServerToggle).isOn && !GetToggle((int)Toggles.ClientToggle).isOn)
         {
@@ -147,9 +207,6 @@ public class MainControlUI : UI_Base
         }
 
         int compileMode = GetDropdown((int)Dropdowns.CompileMode).value;
-        //Debug.Log(GetDropdown((int)Dropdowns.CompileMode).captionText);
-        //Debug.Log(GetDropdown((int)Dropdowns.CompileMode).itemText);
-
         string serverpath = string.Empty;
         string clientpath = string.Empty;
         if (GetToggle((int)Toggles.ServerToggle).isOn)
@@ -161,14 +218,12 @@ public class MainControlUI : UI_Base
             clientpath = GetInputField((int)InputFields.ClientPathInput).text;
         }
 
-        Debug.Log(compileMode);
-        Debug.Log(serverpath);
-        Debug.Log(clientpath);
-
-        // 경로 체크
+        JPDCompiler.JPDSchema.COMPILE_MODE = Enum.GetName(typeof(CompileMode), (CompileMode)compileMode);
+        JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR = serverpath;
+        JPDCompiler.JPDSchema.CLIENT_OUTPUT_DIR = clientpath;
 
         // 컴파일 모드에 따른 UI 추가
-        if(compileMode == (int)CompileMode.RPC)
+        if (compileMode == (int)CompileMode.RPC)
         {
             GameObject prefab = Resources.Load<GameObject>("Prefabs/JRpcGroup");
             if (prefab == null)
@@ -177,14 +232,6 @@ public class MainControlUI : UI_Base
                 return;
             }
             Object.Instantiate(prefab, gameObject.transform.parent);
-
-            //prefab = Resources.Load<GameObject>("Prefabs/JRpcDefGroup");
-            //if (prefab == null)
-            //{
-            //    Debug.Log($"Failed to load prefab : Prefabs/JRpcDefGroup");
-            //    return;
-            //}
-            //Object.Instantiate(prefab, gameObject.transform.parent);
         }
         else if(compileMode == (int)CompileMode.HEADER_ONLY)
         {
@@ -209,7 +256,7 @@ public class MainControlUI : UI_Base
         GetToggle((int)Toggles.ClientToggle).interactable = false;
         GetInputField((int)InputFields.ServerPathInput).interactable = false;
         GetInputField((int)InputFields.ClientPathInput).interactable = false;
-        GetButton((int)Buttons.CreateBtn).interactable = false;
+        GetButton((int)Buttons.EditBtn).interactable = false;
         GetButton((int)Buttons.CancelBtn).interactable = false;
     }
 
@@ -223,4 +270,24 @@ public class MainControlUI : UI_Base
     }
 
     // Click CompileBtn
+
+    // Open Window File Explorer
+    public bool OpenJsonFileExplorer(out string seletecFilePath)
+    {
+       OpenFileDialog openFileDialog = new OpenFileDialog();
+        openFileDialog.InitialDirectory = Environment.CurrentDirectory;
+        openFileDialog.Filter = "JSON files (*.json)|*.json";
+        openFileDialog.FilterIndex = 1;
+        openFileDialog.RestoreDirectory = true;
+
+        if (openFileDialog.ShowDialog() != DialogResult.OK)
+        {
+            seletecFilePath = string.Empty;
+            return false;
+        }
+
+        seletecFilePath = openFileDialog.FileName;
+        Debug.Log("Selected file path: " + seletecFilePath);
+        return true;
+    }
 }

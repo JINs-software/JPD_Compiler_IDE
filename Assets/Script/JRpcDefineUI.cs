@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -27,8 +28,8 @@ public class JRpcDefineUI : UI_Base
     }
 
     public Button JpdBlockBtn = null;
-    public JPD_DEFINE JpdDefine = null;
-    Dictionary<ParamBlock, JPD_PARAM> Parameters = new Dictionary<ParamBlock, JPD_PARAM>();
+    public JPD_MESSAGE JpdMessage = null;
+    //Dictionary<ParamBlock, JPD_PARAM> Parameters = new Dictionary<ParamBlock, JPD_PARAM>();
 
     private void Start()
     {
@@ -44,6 +45,20 @@ public class JRpcDefineUI : UI_Base
         BindEvent(s2cToggle.gameObject, OnS2CToggleClicked, Define.UIEvent.Click);
         BindEvent(c2sToggle.gameObject, OnC2SToggleClicked, Define.UIEvent.Click);
         BindEvent(addParamBtn.gameObject, OnAddParamBtnClicked, Define.UIEvent.Click);
+
+        GetInputField((int)InputFields.NameInputField).text = JpdMessage.Message;
+        if(JpdMessage.Dir == "S2C")
+        {
+            s2cToggle.isOn = true;  
+            c2sToggle.isOn = false;
+        }
+        else
+        {
+            s2cToggle.isOn = false;
+            c2sToggle.isOn = true;
+        }
+
+        SetParamsInView();
     }
 
     public void OnS2CToggleClicked(PointerEventData eventdata)
@@ -64,13 +79,42 @@ public class JRpcDefineUI : UI_Base
 
     public void OnAddParamBtnClicked(PointerEventData eventdata)
     {
+        JPD_PARAM newParam = new JPD_PARAM();
+        JpdMessage.Param.Add(newParam);     
+        AddParamBlock(newParam);    
+    }
+
+    public void OnParamOkBtnClicked(PointerEventData eventdata)
+    {
+        GameObject paramBlockOb = eventdata.selectedObject.transform.parent.gameObject;
+        ParamBlock paramBlock = paramBlockOb.GetComponent<ParamBlock>();
+        paramBlock.Reset();
+
+        JRpcUI.SetJpdMessageBtntext(JpdBlockBtn.gameObject, JpdMessage);
+    }
+    public void OnParamDeleteBtnClicked(PointerEventData eventdata)
+    {
+        GameObject paramBlockObj = eventdata.selectedObject.transform.parent.gameObject;
+        ParamBlock paramBlock = paramBlockObj.GetComponent<ParamBlock>();
+
+        JpdMessage.Param.Remove(paramBlock.JpdParam);
+        paramBlock.gameObject.transform.SetParent(null);
+        GameObject.Destroy(paramBlockObj);
+
+        JRpcUI.SetJpdMessageBtntext(JpdBlockBtn.gameObject, JpdMessage);
+    }
+
+    private void AddParamBlock(JPD_PARAM param)
+    {
         ScrollRect paramViewRect = Get<ScrollRect>((int)ScrollRects.PARAM_VIEW);
         GameObject scrollViewContent = Utill.FindChild(paramViewRect.gameObject, "Content", true);
         GameObject newParamBlock = CreateParamBlock();
         ParamBlock paramBlockComp = newParamBlock.GetComponent<ParamBlock>();
+        paramBlockComp.JpdParam = param;
+
         BindEvent(paramBlockComp.OkBtn.gameObject, OnParamOkBtnClicked, Define.UIEvent.Click);
-        BindEvent(paramBlockComp.DeleteBtn.gameObject, OnParamDeleteBtnClicked, Define.UIEvent.Click);        
-        Parameters.Add(newParamBlock.GetComponent<ParamBlock>(), new JPD_PARAM());
+        BindEvent(paramBlockComp.DeleteBtn.gameObject, OnParamDeleteBtnClicked, Define.UIEvent.Click);
+        //Parameters.Add(newParamBlock.GetComponent<ParamBlock>(), new JPD_PARAM());
 
         GetButton((int)Buttons.AddParamBtn).gameObject.transform.SetParent(null);
         newParamBlock.transform.SetParent(scrollViewContent.transform);
@@ -78,27 +122,11 @@ public class JRpcDefineUI : UI_Base
 
         Canvas.ForceUpdateCanvases();
         paramViewRect.verticalNormalizedPosition = 0;
-    }
 
-    public void OnParamOkBtnClicked(PointerEventData eventdata)
-    {
-        GameObject paramBlockOb = eventdata.selectedObject.transform.parent.gameObject;
-        ParamBlock paramBlock = paramBlockOb.GetComponent<ParamBlock>();    
-        JPD_PARAM jpdParam = Parameters[paramBlock];
-        jpdParam.type = paramBlock.TypeInput.text;
-        jpdParam.name = paramBlock.NameInput.text;
+        paramBlockComp.TypeInput.text = param.Type;
+        paramBlockComp.NameInput.text = param.Name;
 
-        SaveJpdDefine();
-    }
-    public void OnParamDeleteBtnClicked(PointerEventData eventdata)
-    {
-        GameObject paramBlockObj = eventdata.selectedObject.transform.parent.gameObject;
-        ParamBlock paramBlock = paramBlockObj.GetComponent<ParamBlock>();   
-        paramBlock.gameObject.transform.SetParent(null);
-        Parameters.Remove(paramBlock);  
-        GameObject.Destroy(paramBlock.gameObject);
-
-        SaveJpdDefine();
+        JRpcUI.SetJpdMessageBtntext(JpdBlockBtn.gameObject, JpdMessage);
     }
 
     private GameObject CreateParamBlock()
@@ -109,39 +137,49 @@ public class JRpcDefineUI : UI_Base
             Debug.Log($"Failed to load prefab : Prefabs/ParamBlock");
             return null;
         }
-        GameObject paramBlock = Object.Instantiate(prefab);//, gameObject.transform.parent);
+        GameObject paramBlock = GameObject.Instantiate(prefab);//, gameObject.transform.parent);
 
         return paramBlock;
     }
 
+    private void SetParamsInView()
+    {
+        foreach(var param in JpdMessage.Param)
+        {
+            AddParamBlock(param);
+        }
+    }
+
+    /*
     private void SaveJpdDefine()
     {
         Text messageText = Utill.FindChild(JpdBlockBtn.gameObject, "MessageText").GetComponent<Text>();
         messageText.text = "";
 
-        JpdDefine.Name = GetInputField((int)InputFields.NameInputField).text;
+        JpdMessage.Message = GetInputField((int)InputFields.NameInputField).text;
         if (GetToggle((int)Toggles.S2CToggle).isOn)
         {
-            JpdDefine.Dir = "S2C";
+            JpdMessage.Dir = "S2C";
         }
         else
         {
-            JpdDefine.Dir = "C2S";
+            JpdMessage.Dir = "C2S";
         }
 
-        messageText.text = JpdDefine.Name + "_" + JpdDefine.Dir;
+        messageText.text = JpdMessage.Message + "_" + JpdMessage.Dir;
         messageText.text += "\r\n";
         messageText.text += "(";
 
-        JpdDefine.Param.Clear();
+        JpdMessage.Param.Clear();
         foreach (var param in Parameters)
         {
             JPD_PARAM jpdParam = param.Value;
-            JpdDefine.Param.Add(jpdParam);
+            JpdMessage.Param.Add(jpdParam);
 
-            messageText.text += jpdParam.type + " " + jpdParam.name + ", ";
+            messageText.text += jpdParam.Type + " " + jpdParam.Name + ", ";
         }
         messageText.text = messageText.text.Substring(0, messageText.text.Length - 2);
         messageText.text += ")";
     }
+    */
 }

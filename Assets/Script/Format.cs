@@ -5,45 +5,48 @@ using System.Collections.Generic;
 [Serializable]
 public class JPD_PARAM
 {
-    public string type;
-    public string name;
+    public string Type;
+    public string Name;
 }
 
 [Serializable]
-public class JPD_DEFINE
+public class JPD_MESSAGE
 {
-    public string Name;
+    public string Message;
     public string Dir;
     public List<JPD_PARAM> Param;
 
-    public JPD_DEFINE()
+    public JPD_MESSAGE()
     {
         Param = new List<JPD_PARAM> ();
     }
 }
 
 [Serializable]
-public class JPD_ITEM
+public class JPD_NAMESPACE
 {
     public string Namespace;
     public string ID;
-    public List<JPD_DEFINE> Defines;
+    public List<JPD_MESSAGE> Defines;
 
-    public JPD_ITEM(string namespaceName, string id)
+    public JPD_NAMESPACE(string namespaceName, string id)
     {
         Namespace = namespaceName;  
         ID = id;    
-        Defines = new List<JPD_DEFINE>();   
+        Defines = new List<JPD_MESSAGE>();   
     }
 }
 
 [Serializable]
-public class JPD
+public class JPD_SCHEMA
 {
-    public List<JPD_ITEM> JpdItems;    
+    public string COMPILE_MODE;
+    public string SERVER_OUTPUT_DIR;
+    public string CLIENT_OUTPUT_DIR;
+    public List<JPD_NAMESPACE> JPD;    
 
-    public JPD()
+    public JPD_SCHEMA()
     {
-        JpdItems = new List<JPD_ITEM>();
+        JPD = new List<JPD_NAMESPACE>();
     }
 }
