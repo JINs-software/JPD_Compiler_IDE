@@ -12,6 +12,7 @@ public class JRpcUI : UI_Base
 {
     enum Buttons
     {
+        ValidBtn,
         NewBtn,
         OkBtn,
         AddBtn,
@@ -24,6 +25,7 @@ public class JRpcUI : UI_Base
 
     enum InputFields
     {
+        ValidCodeInput,
         NamespaceInput,
         IdInput,
     }
@@ -51,12 +53,14 @@ public class JRpcUI : UI_Base
         Bind<InputField>(typeof(InputFields));
         Bind<ScrollRect>(typeof(ScrollRects));   
 
+        Button validBtn = GetButton((int)Buttons.ValidBtn); 
         Button newBtn = GetButton((int)Buttons.NewBtn);
         Button okBtn = GetButton((int)Buttons.OkBtn);
         Button addBtn = GetButton((int)Buttons.AddBtn);
        
         Dropdown namespaceDropdown = GetDropdown((int)Dropdowns.NamespaceDropdown);
         
+        InputField validCodeInput = GetInputField((int)InputFields.ValidCodeInput);
         InputField namespaceInput = GetInputField((int)InputFields.NamespaceInput);
         InputField idInput = GetInputField((int)InputFields.IdInput);
 
@@ -66,6 +70,7 @@ public class JRpcUI : UI_Base
         // => 드롭다운을 클릭할 때는 이벤트를 받지만, 클릭 후 나열된 옵션들을 선택할 땐 이벤트를 받지 못하는 문제 발생
         namespaceDropdown.onValueChanged.AddListener(OnNamespaceChanged);
 
+        BindEvent(validBtn.gameObject, OnValidBtnClicked, Define.UIEvent.Click);
         BindEvent(newBtn.gameObject, OnNewBtnClicked, Define.UIEvent.Click);
         BindEvent(okBtn.gameObject, OnOkBtnClicked, Define.UIEvent.Click);
         BindEvent(addBtn.gameObject, OnAddBtnClicked, Define.UIEvent.Click);
@@ -114,6 +119,16 @@ public class JRpcUI : UI_Base
         }
     }
 
+    public void OnValidBtnClicked(PointerEventData eventdata)
+    {
+        InputField validInput = GetInputField((int)InputFields.ValidCodeInput);
+        string validCodeStr = validInput.text;
+        int validCode = int.Parse(validCodeStr);
+        if (!JPDCompiler.Instance.SetVaildCode(validCode))
+        {
+            validInput.text = "";
+        }
+    }
     public void OnNewBtnClicked(PointerEventData eventdata)
     {
         Debug.Log("OnNewBtnClicked");

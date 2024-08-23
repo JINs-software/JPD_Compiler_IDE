@@ -35,12 +35,18 @@ public class JPDCompiler : MonoBehaviour
     string m_ServerPath = string.Empty;
     string m_ClientPath = string.Empty;
     JPD_SCHEMA m_JPD = new JPD_SCHEMA();
+    private byte validCode;
+    
+    public bool SetVaildCode(int code)
+    {
+        if(code > 255)
+        {
+            return false;
+        }
 
-    int     MsgHdrSize = 3;
-    string  MsgLengthFieldType = "BYTE";
-    string  MsgIdFieldType = "BYTE";
-    int     MsgLengthFieldOffset = 1;
-    int     MsgIdFieldOffset = 2;
+        validCode = (byte)code;
+        return true;    
+    }
 
     public JPD_NAMESPACE AddJpdNamespace(string name, string id)
     {
@@ -191,13 +197,18 @@ public class JPDCompiler : MonoBehaviour
                 {
                     sw.Write(", " + param.Type + " " + param.Name);
                 }
-                sw.WriteLine("); {");
+                sw.WriteLine(") {");
                 sw.WriteLine("\t\tuint32_t msgLen = " + sizeofStr(msg.Param));
                 sw.WriteLine("\t\tstJNetSession* jnetSession = GetJNetSession(remote);");
                 sw.WriteLine("\t\tif (jnetSession != nullptr) {");
                 sw.WriteLine("\t\t\tJBuffer& buff = jnetSession->sendBuff;");
-                sw.WriteLine("\t\t\tif (buff.GetFreeSize() >= msgLen) {");
-                
+                sw.WriteLine("\t\t\tif (buff.GetFreeSize() >= sizeof(stMSG_HDR) + msgLen) {");
+
+                sw.WriteLine("\t\t\t\tstMSG_HDR hdr;");
+                sw.WriteLine("\t\t\t\thdr.byCode = " + validCode + ";");
+                sw.WriteLine("\t\t\t\thdr.bySize = " + sizeofStr(msg.Param));
+                sw.WriteLine("\t\t\t\thdr.byType = RPC_" + msg.Message + ";");
+                sw.WriteLine("\t\t\t\tbuff << hdr;");
                 foreach (var param in msg.Param)
                 {
                     sw.WriteLine("\t\t\t\tbuff << " + param.Name + ";");
@@ -269,32 +280,35 @@ public class JPDCompiler : MonoBehaviour
 
     private void MakeStubHdr_Server(StreamWriter sw, JPD_NAMESPACE jpdNamespace, string direction)
     {
-        sw.WriteLine("namespace " + jpdNamespace.Namespace + "_" + direction + "{");
+        sw.WriteLine("namespace " + jpdNamespace.Namespace + "_" + direction + " {");
         sw.WriteLine();
         sw.WriteLine("\tclass Stub : public JNetStub");
         sw.WriteLine("\t{");
         sw.WriteLine("\tpublic:");
         foreach(var msg in jpdNamespace.Defines)
         {
-            string fdef = msg.Message + "(HostID remote";
-            foreach(var param in msg.Param)
+            if (msg.Dir == direction)
             {
-                //sw.Write(", " + param.Type + " " + param.Name);
-                fdef += (", " + param.Type + " " + param.Name);
-            }
-            fdef += ")";
+                string fdef = msg.Message + "(HostID remote";
+                foreach (var param in msg.Param)
+                {
+                    //sw.Write(", " + param.Type + " " + param.Name);
+                    fdef += (", " + param.Type + " " + param.Name);
+                }
+                fdef += ")";
 
-            sw.Write("\t\tvirtual bool ");
-            sw.Write(fdef);
-            sw.WriteLine(" { return false; }");
-            sw.WriteLine("#define JPDEC_" + jpdNamespace.Namespace + "_" + direction + "_" + msg.Message + " bool " + fdef);
-            sw.WriteLine("#define JPDEF_" + jpdNamespace.Namespace + "_" + direction + "_" + msg.Message + "(DerivedClass) bool DerivedClass::" + fdef);
+                sw.Write("\t\tvirtual bool ");
+                sw.Write(fdef);
+                sw.WriteLine(" { return false; }");
+                sw.WriteLine("#define JPDEC_" + jpdNamespace.Namespace + "_" + direction + "_" + msg.Message + " bool " + fdef);
+                sw.WriteLine("#define JPDEF_" + jpdNamespace.Namespace + "_" + direction + "_" + msg.Message + "(DerivedClass) bool DerivedClass::" + fdef);
+            }
         }
 
         sw.WriteLine();
         sw.WriteLine("\t\tRpcID* GetRpcList() override { return gRpcList; }");
         sw.WriteLine("\t\tint GetRpcListCount() override { return gRpcListCount; }");
-        sw.WriteLine("\t\tbool ProcessReceivedMessage(HostID remote, JBuffer& jbuff) override;");
+        sw.WriteLine("\t\tvoid ProcessReceivedMessage(HostID remote, JBuffer& jbuff) override;");
         sw.WriteLine("\t};");
         sw.WriteLine("}");
         sw.WriteLine();
@@ -304,42 +318,39 @@ public class JPDCompiler : MonoBehaviour
     {
         sw.WriteLine("namespace " + jpdNamespace.Namespace + "_" + direction + " {");
         sw.WriteLine();
-        sw.WriteLine("\tbool Stub::ProcessReceivedMessage(HostID remote, JBuffer& jbuff) {");
-        sw.WriteLine("\t\twhile(true) {");
-        sw.WriteLine("\t\t\tif (jbuff.GetUseSize() < " + MsgHdrSize + ") {");
-        sw.WriteLine(("\t\t\t\treturn false;"));
-        sw.WriteLine("\t\t\t}");
-        sw.WriteLine(("\t\t\t" + MsgLengthFieldType + " msgLen;"));
-        sw.WriteLine(("\t\t\t" + MsgIdFieldType + " msgID;"));
-        sw.WriteLine("\t\t\tjbuff.Peek(" + MsgLengthFieldOffset + ", reinterpret_cast<BYTE*>(&msgLen), sizeof(msgLen));");
-        sw.WriteLine("\t\t\tjbuff.Peek(" + MsgIdFieldOffset + ", reinterpret_cast<BYTE*>(&msgID), sizeof(msgID));");
-        sw.WriteLine("\t\t\tif (jbuff.GetUseSize() < " + MsgHdrSize + " + msgLen) {");
-        sw.WriteLine("\t\t\t\treturn false;");
-        sw.WriteLine("\t\t\t}");
-        sw.WriteLine();
-        sw.WriteLine("\t\t\tswitch(static_cast<RpcID>(msgID)) {");
+        sw.WriteLine("\tvoid Stub::ProcessReceivedMessage(HostID remote, JBuffer& jbuff) {");
+        //sw.WriteLine("\t\twhile(true) {");
+        sw.WriteLine("\t\tif (jbuff.GetUseSize() < sizeof(stMSG_HDR)) {");
+        sw.WriteLine(("\t\t\treturn;"));
+        sw.WriteLine("\t\t}");
+        sw.WriteLine(("\t\tstMSG_HDR hdr;"));
+        sw.WriteLine("\t\tjbuff.Peek(&hdr);");
+        sw.WriteLine("\t\tif (sizeof(hdr) + hdr.bySize > jbuff.GetUseSize()) {");
+        sw.WriteLine("\t\t\treturn;");
+        sw.WriteLine("\t\t}");
+        sw.WriteLine("\t\tjbuff.Dequeue((BYTE*)&hdr, sizeof(hdr));");
+        sw.WriteLine("\t\tswitch(static_cast<RpcID>(hdr.byType)) {");
         foreach(var msg in jpdNamespace.Defines)
         {
             if(msg.Dir == direction)
             {
                 string fcall = msg.Message + "(remote";
-                sw.WriteLine("\t\t\tcase RPC_" + msg.Message + ":");
-                sw.WriteLine("\t\t\t{");
+                sw.WriteLine("\t\tcase RPC_" + msg.Message + ":");
+                sw.WriteLine("\t\t{");
                 foreach(var param in msg.Param)
                 {
                     fcall += ", " + param.Name;
-                    sw.WriteLine("\t\t\t\t" + param.Type + " " + param.Name + ";");
-                    sw.WriteLine("\t\t\t\tjbuff >> " + param.Name + ";");
+                    sw.WriteLine("\t\t\t" + param.Type + " " + param.Name + ";");
+                    sw.WriteLine("\t\t\tjbuff >> " + param.Name + ";");
                 }
                 fcall += ")";
-                sw.WriteLine("\t\t\t\t" + fcall + ";");
-                sw.WriteLine("\t\t\t}");
-                sw.WriteLine("\t\t\tbreak");
+                sw.WriteLine("\t\t\t" + fcall + ";");
+                sw.WriteLine("\t\t}");
+                sw.WriteLine("\t\tbreak;");
             }
-            sw.WriteLine("\t\t\t}");
         }
-
         sw.WriteLine("\t\t}");
+        //sw.WriteLine("\t\t}");
         sw.WriteLine("\t}");
         sw.WriteLine("}");
         sw.WriteLine();
@@ -385,7 +396,7 @@ public class JPDCompiler : MonoBehaviour
             JPD_MESSAGE msg = jpdNamespace.Defines[i];
             if (msg.Dir == direction)
             {
-                sw.WriteLine("\tstatic const RpcID RPC_" + msg.Message + " = " + ID + i + ";");
+                sw.WriteLine("\tstatic const RpcID RPC_" + msg.Message + " = " + (ID + i).ToString() + ";");
             }
         }
 
