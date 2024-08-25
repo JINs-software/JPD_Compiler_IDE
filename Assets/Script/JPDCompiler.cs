@@ -27,14 +27,18 @@ public class JPDCompiler : MonoBehaviour
             go.AddComponent<JPDCompiler>();
 
             DontDestroyOnLoad(go);
-            s_Instance = go.GetComponent<JPDCompiler>();
         }
+        s_Instance = go.GetComponent<JPDCompiler>();
     }
 
     private int m_CompileMode = 0;
     string m_ServerPath = string.Empty;
     string m_ClientPath = string.Empty;
     JPD_SCHEMA m_JPD = new JPD_SCHEMA();
+
+    string TypeOfHdrCode = "byte";
+    string TypeOfHdrMsgLen = "byte";
+    string TypeOfHdrMsgType = "byte";
     private byte validCode;
     
     public bool SetVaildCode(int code)
@@ -99,6 +103,15 @@ public class JPDCompiler : MonoBehaviour
 
     private bool Compile_RPC()
     {
+        foreach (var jpdNamespaces in m_JPD.JPD)
+        {
+            int namespaceID = int.Parse(jpdNamespaces.ID);
+            for(int i=0; i< jpdNamespaces.Defines.Count; i++)
+            {
+                jpdNamespaces.Defines[i].ID = (namespaceID + i).ToString();
+            }
+        }
+
         if (!string.IsNullOrEmpty(m_JPD.SERVER_OUTPUT_DIR))
         {
             if (!Compile_RPC_SERVER())
@@ -466,14 +479,29 @@ using UnityEngine;
 public class Stub : MonoBehaviour
 {{
     public Dictionary<int, Action<byte[]>> methods = new Dictionary<int, Action<byte[]>>();
-}}
-
-";
     
+    protected Dictionary<string, byte> MessageIDs = new Dictionary<string, byte>()
+    {{";
+        foreach(var jpdNamespace in jpdNamespaces)
+        {
+            foreach (var jpdMessage in jpdNamespace.Defines)
+            {
+                if (jpdMessage.Dir == "S2C")
+                {
+                    StubContent += $@"
+        {{""{jpdMessage.Message}"", {jpdMessage.ID}}},";
+                }
+            }
+        }
+        StubContent += $@"
+    }};
+}}
+";
         List<string> stubClassDefs = new List<string>();    
         foreach(var jpdNamespace in jpdNamespaces)
         {
             string stubClass = MakeClientStubClass(jpdNamespace);
+            stubClassDefs.Add(stubClass);   
         }
     
         using(FileStream fs = OpenFile(stubPath))
@@ -488,28 +516,143 @@ public class Stub : MonoBehaviour
                 }
             }
         }
+
+        foreach (var jpdNamespace in jpdNamespaces)
+        {
+            MakeClientStubFile(jpdNamespace);
+        }
+    }
+
+    private void MakeClientStubFile(JPD_NAMESPACE jpdNamespace)
+    {
+        string path = m_JPD.CLIENT_OUTPUT_DIR + "\\" + jpdNamespace.Namespace + ".cs";
+
+        string stubFileContent = $@"
+using System;
+
+public class {jpdNamespace.Namespace} : Stub_{jpdNamespace.Namespace}
+{{
+    private void Start() 
+    {{
+        base.Init();
+    }}
+
+";
+        foreach(var jpdMessage in jpdNamespace.Defines)
+        {
+            if(jpdMessage.Dir != "S2C") { continue; }
+            string parameters = "";
+            for(int i=0; i<jpdMessage.Param.Count; i++)
+            {
+                string type = TranslateCSharpType(jpdMessage.Param[i].Type);
+                parameters += type + " " + jpdMessage.Param[i].Name;
+                if(i !=  jpdMessage.Param.Count - 1)
+                {
+                    parameters += ", "; 
+                }
+            }
+            stubFileContent += $@"
+    protected override void {jpdMessage.Message}({parameters}) 
+    {{
+        throw new NotImplementedException(""{jpdMessage.Message}"");
+    }}
+";
+        }
+        stubFileContent += $@"
+}}
+";
+
+        using (FileStream fs = OpenFile(path))
+        {
+            using (StreamWriter sw = new StreamWriter(fs))
+            {
+                sw.Write(stubFileContent);
+            }
+        }
     }
 
     private string MakeClientStubClass(JPD_NAMESPACE jpdNamespace)
     {
-        string ret = $@"
+        string stubClassDef = $@"
 public abstract class Stub_{jpdNamespace.Namespace} : Stub
 {{
     public void Init() 
     {{
 ";
+        foreach(var jpdMessage in jpdNamespace.Defines)
+        {
+            if (jpdMessage.Dir == "S2C")
+            {
+                stubClassDef += $@"
+        methods.Add(MessageIDs[""{jpdMessage.Message}""], {jpdMessage.Message});";
+            }
+        }
+        stubClassDef += $@"
+        RPC.Instance.AttachStub(this);
+    }}
 
-        return ret;
+";
+        foreach (var jpdMessage in jpdNamespace.Defines)
+        {
+            if(jpdMessage.Dir != "S2C") { continue; }
+            stubClassDef += $@"
+    public void {jpdMessage.Message}(byte[] payload)
+    {{
+        int offset = 0;";
+            string parameters = "";
+            for(int i=0; i< jpdMessage.Param.Count; i++)
+            {
+                parameters += jpdMessage.Param[i].Name;
+                if(i != jpdMessage.Param.Count - 1)
+                {
+                    parameters += ", ";
+                }
+                string type = TranslateCSharpType(jpdMessage.Param[i].Type);
+                if (type == "Byte")
+                {
+                    stubClassDef += $@"
+        {type} {jpdMessage.Param[i].Name} = payload[offset++];";
+                }
+                else
+                {
+                    stubClassDef += $@"
+        {type} {jpdMessage.Param[i].Name} = BitConverter.To{type}(payload, offset); offset += sizeof({type});";
+                }
+            }
+            stubClassDef += $@"
+        {jpdMessage.Message}({parameters});
+    }}
+";
+        }
+
+        foreach (var jpdMessage in jpdNamespace.Defines)
+        {
+            if(jpdMessage.Dir != "S2C") { continue; }
+            string paramters = "";
+            for (int i = 0; i < jpdMessage.Param.Count; i++)
+            {
+                string type = TranslateCSharpType(jpdMessage.Param[i].Type);
+                paramters += (type + " " + jpdMessage.Param[i].Name);
+                if(i != jpdMessage.Param.Count - 1)
+                {
+                    paramters += ", ";  
+                }
+            }
+            stubClassDef += $@"
+    protected abstract void {jpdMessage.Message}({paramters});
+";
+        }
+
+        stubClassDef += $@"
+}}
+";
+        return stubClassDef;
     }
 
     private void MakeComm_Client()
     {
         string commRpcPath = m_JPD.CLIENT_OUTPUT_DIR + "\\RPC.cs";
         string commNetworkPath = m_JPD.CLIENT_OUTPUT_DIR + "\\NetworkManager.cs";
-
-        string TypeOfHdrCommCode = "";
-        string TypeOfHdrMsgSize = "";
-        string TypeOfMsgType = "";
 
         UInt32 ValidCode = 0;
 
@@ -524,9 +667,9 @@ using UnityEngine;
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 struct stMSG_HDR
 {{
-    public {TypeOfHdrCommCode} byCode;
-    public {TypeOfHdrMsgSize} bySize;
-    public {TypeOfMsgType} byType;
+    public {TypeOfHdrCode} Code;
+    public {TypeOfHdrMsgLen} MsgLen;
+    public {TypeOfHdrMsgType} MsgType;
 }}
 
 public class RPC : MonoBehaviour
@@ -534,7 +677,7 @@ public class RPC : MonoBehaviour
     static RPC s_Instance;
     public static RPC Instance {{ get {{ Init(); return s_Instance; }} }}
     public static Proxy proxy = new Proxy();
-    public static {TypeOfHdrCommCode} ValidCode = {ValidCode};
+    public static {TypeOfHdrCode} ValidCode = {ValidCode};
     private Dictionary<int, Action<byte[]>> StubMethods = new Dictionary<int, Action<byte[]>>();
 
     NetworkManager m_NetworkManager = new NetworkManager();
@@ -577,13 +720,13 @@ public class RPC : MonoBehaviour
         {{
             stMSG_HDR hdr;
             Network.Peek<stMSG_HDR>(out hdr);
-            if (Marshal.SizeOf<stMSG_HDR>() + hdr.bySize <= Network.ReceivedDataSize())
+            if (Marshal.SizeOf<stMSG_HDR>() + hdr.MsgLen <= Network.ReceivedDataSize())
             {{
                 Network.ReceiveData<stMSG_HDR>(out hdr);
-                byte[] payload = Network.ReceiveBytes(hdr.bySize);
-                if (StubMethods.ContainsKey(hdr.byType))
+                byte[] payload = Network.ReceiveBytes(hdr.MsgLen);
+                if (StubMethods.ContainsKey(hdr.MsgType))
                 {{
-                    StubMethods[hdr.byType].Invoke(payload);
+                    StubMethods[hdr.MsgType].Invoke(payload);
                 }}
             }}
             else
@@ -927,11 +1070,30 @@ public class NetworkManager
 
         string intro = $@"
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 public class Proxy
 {{
+    Dictionary<string, {TypeOfHdrMsgType}> MessageIDs = new Dictionary<string, {TypeOfHdrMsgType}>()
+    {{
 ";
+        foreach (var jpdNamespace in jpdNamespaces)
+        {
+            foreach (var jpdMessage in jpdNamespace.Defines)
+            {
+                if (jpdMessage.Dir == "C2S")
+                {
+                    intro += $@"
+        {{""{jpdMessage.Message}"", {jpdMessage.ID}}},";
+                }
+            }
+        }
+        intro += $@"
+    }};
+
+";
+
         string outro = $@"
 }}
 ";
@@ -941,8 +1103,11 @@ public class Proxy
         {
             foreach(var jpdMessage in jpdNamespace.Defines)
             {
-                string defStr = MakeClientProxyFunc(jpdMessage);
-                proxyFuncDefs.Add(defStr);
+                if (jpdMessage.Dir == "C2S")
+                {
+                    string defStr = MakeClientProxyFunc(jpdMessage);
+                    proxyFuncDefs.Add(defStr);
+                }
             }
         }
 
@@ -964,12 +1129,12 @@ public class Proxy
 
     private string MakeClientProxyFunc(JPD_MESSAGE jpdMessage)
     {
-        string TypeOfHdrMsgLen = "";
         string parmeters = "";
         string sizeofParamters = "";
         for(int i=0; i<jpdMessage.Param.Count; i++)
         {
-            parmeters += jpdMessage.Param[i].Type + " " + jpdMessage.Param[i].Name;
+            string type = TranslateCSharpType(jpdMessage.Param[i].Type);
+            parmeters += type + " " + jpdMessage.Param[i].Name;
             sizeofParamters += "Marshal.SizeOf(" + jpdMessage.Param[i].Name + ")";
             if (i != jpdMessage.Param.Count - 1)
             {
@@ -981,17 +1146,17 @@ public class Proxy
     public void {jpdMessage.Message}({parmeters})
     {{
         stMSG_HDR hdr = new stMSG_HDR();
-        hdr.Code = PRC.ValidCode;
+        hdr.Code = RPC.ValidCode;
         hdr.MsgLen = ({TypeOfHdrMsgLen})({sizeofParamters});
         hdr.MsgType = MessageIDs[""{jpdMessage.Message}""];
 
-        byte[] bytes = new byte[Marshal.Sizeof(hdr) + hdr.MsgLen];
+        byte[] bytes = new byte[Marshal.SizeOf(hdr) + hdr.MsgLen];
 
         byte[] bytesHdr = new byte[Marshal.SizeOf(hdr)];
         RPC.Network.MessageToBytes<stMSG_HDR>(hdr, bytesHdr);
 
         int offset = 0;
-";
+        Buffer.BlockCopy(bytesHdr, 0, bytes, offset, Marshal.SizeOf(hdr)); offset += Marshal.SizeOf(hdr);";
 
         foreach(var param in jpdMessage.Param)
         {
@@ -999,14 +1164,12 @@ public class Proxy
             if(csharType == "Byte")
             {
                 funcDef += $@"
-            bytes[offset++] = {param.Name};
-";
+        bytes[offset++] = {param.Name};";
             }
             else
             {
                 funcDef += $@"
-            Buffer.BlockCopy(BitConverter.GetBytes({param.Name}), 0, bytes, offset, sizeof({csharType})); offset += sizeof({csharType});
-";
+        Buffer.BlockCopy(BitConverter.GetBytes({param.Name}), 0, bytes, offset, sizeof({csharType})); offset += sizeof({csharType});";
             }
         }
 
@@ -1048,6 +1211,7 @@ public class Proxy
                 ret = "Int64";
                 break;
             default:
+                ret = type; 
                 break;
         }
 

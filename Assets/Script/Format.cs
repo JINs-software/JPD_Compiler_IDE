@@ -13,6 +13,7 @@ public class JPD_PARAM
 public class JPD_MESSAGE
 {
     public string Message;
+    public string ID;
     public string Dir;
     public List<JPD_PARAM> Param;
 
