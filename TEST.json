@@ -1,0 +1,51 @@
+{
+    "SERVER_COMPILE_MODE": "RPC",
+    "SERVER_OUTPUT_DIR": "",
+    "CLIENT_COMPILE_MODE": "RPC",
+    "CLIENT_OUTPUT_DIR": "",
+    "JPD_Enums": [
+        {
+            "Name": "ATTACK_ENUM",
+            "Fields": [
+                "ATTACK1",
+                "ATTACK2",
+                "ATTACK3"
+            ]
+        },
+        {
+            "Name": "MOVE_ENUM",
+            "Fields": [
+                "START",
+                "STOP"
+            ]
+        }
+    ],
+    "JPD_ConstGroups": [
+        {
+            "Name": "ATTACK_CONST",
+            "Consts": [
+                {
+                    "Type": "UINT16",
+                    "Name": "RANGE",
+                    "Value": "10"
+                },
+                {
+                    "Type": "UINT16",
+                    "Name": "DAMAGE",
+                    "Value": "30"
+                }
+            ]
+        },
+        {
+            "Name": "MOVE_CONST",
+            "Consts": [
+                {
+                    "Type": "UINT16",
+                    "Name": "SPEED",
+                    "Value": "3"
+                }
+            ]
+        }
+    ],
+    "JPD_Namespaces": []
+}

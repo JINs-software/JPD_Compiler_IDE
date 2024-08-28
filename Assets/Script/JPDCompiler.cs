@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http.Headers;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Assertions.Must;
@@ -13,6 +14,22 @@ public class JPDCompiler : MonoBehaviour
     public static JPDCompiler Instance { get { Init(); return s_Instance; } }
 
     public static JPD_SCHEMA JPDSchema { get { return Instance.m_JPD; } }
+
+    public static byte ValidCode
+    {
+        get { return Instance.validCode; }
+        set { Instance.validCode = value; }
+    }
+    public static bool EnDecodeFlag
+    {
+        get { return Instance.endecodeFlag; }
+        set { Instance.endecodeFlag = value; }
+    }
+    public static bool SimpleHdrMode
+    {
+        get { return Instance.simpleHdrMode; }
+        set { Instance.simpleHdrMode = value; }
+    }
 
     private void Start()
     {
@@ -31,30 +48,15 @@ public class JPDCompiler : MonoBehaviour
         s_Instance = go.GetComponent<JPDCompiler>();
     }
 
-    private int m_CompileMode = 0;
-    string m_ServerPath = string.Empty;
-    string m_ClientPath = string.Empty;
     JPD_SCHEMA m_JPD = new JPD_SCHEMA();
 
-    string TypeOfHdrCode = "byte";
-    string TypeOfHdrMsgLen = "byte";
-    string TypeOfHdrMsgType = "byte";
-    private byte validCode;
+    byte    validCode;
+    bool    endecodeFlag;
+    bool    simpleHdrMode;
     
-    public bool SetVaildCode(int code)
-    {
-        if(code > 255)
-        {
-            return false;
-        }
-
-        validCode = (byte)code;
-        return true;    
-    }
-
     public JPD_NAMESPACE AddJpdNamespace(string name, string id)
     {
-        foreach (var item in m_JPD.JPD)
+        foreach (var item in m_JPD.JPD_Namespaces)
         {
             if (item.Namespace == name)
             {
@@ -62,17 +64,20 @@ public class JPDCompiler : MonoBehaviour
             }
         }
 
-        int namespaceID = m_JPD.JPD.Count;
+        int namespaceID = m_JPD.JPD_Namespaces.Count;
         JPD_NAMESPACE newNamespace = new JPD_NAMESPACE(name, namespaceID.ToString());
         newNamespace.Namespace = name;
         newNamespace.ID = namespaceID.ToString();
-        m_JPD.JPD.Add(newNamespace);
+        m_JPD.JPD_Namespaces.Add(newNamespace);
 
         return newNamespace;
     }
 
     public void SaveJsonFile(string path)
     {
+        // ID 부여
+        AllocJpdMessageID();
+
         string json = JsonUtility.ToJson(m_JPD, true);
         File.WriteAllText(path, json);
     }
@@ -89,49 +94,170 @@ public class JPDCompiler : MonoBehaviour
 
     public bool Complie()
     {
-        if (m_JPD.COMPILE_MODE == "RPC")
+        AllocJpdMessageID();
+
+        if (!string.IsNullOrEmpty(m_JPD.SERVER_OUTPUT_DIR))
         {
-            return Compile_RPC();
-        }
-        else if (m_JPD.COMPILE_MODE == "HEADER_ONLY")
-        {
-            return Compile_HDR_ONLY();
+            if (m_JPD.SERVER_COMPILE_MODE == "RPC")
+            {
+                if (!Compile_RPC_SERVER())
+                {
+                    return false;
+                }
+            }
+            else if (m_JPD.SERVER_COMPILE_MODE == "HEADER_ONLY")
+            {
+                if (!Compile_HDR_ONLY_SERVER())
+                {
+                    return false;
+                }
+            }
         }
 
-        return false;
+        if (!string.IsNullOrEmpty(m_JPD.CLIENT_OUTPUT_DIR))
+        {
+            if (m_JPD.CLIENT_COMPILE_MODE == "RPC")
+            {
+                if(!Compile_RPC_CLIENT())
+                {
+                    return false;   
+                }
+            }
+            else if(m_JPD.CLIENT_COMPILE_MODE == "HEADER_ONLY")
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        return true;
     }
 
-    private bool Compile_RPC()
+    private void AllocJpdMessageID()
     {
-        foreach (var jpdNamespaces in m_JPD.JPD)
+        foreach (var jpdNamespaces in m_JPD.JPD_Namespaces)
         {
             int namespaceID = int.Parse(jpdNamespaces.ID);
-            for(int i=0; i< jpdNamespaces.Defines.Count; i++)
+            for (int i = 0; i < jpdNamespaces.Defines.Count; i++)
             {
                 jpdNamespaces.Defines[i].ID = (namespaceID + i).ToString();
             }
         }
+    }
 
-        if (!string.IsNullOrEmpty(m_JPD.SERVER_OUTPUT_DIR))
+    private bool Compile_HDR_ONLY_SERVER()
+    {
+        string protocolHdr = m_JPD.SERVER_OUTPUT_DIR + "\\Protocol.h";
+
+        string ProtocolHdrContent = $@"
+#pragma once
+#include <minwindef.h>
+
+";
+        foreach(var jpdConstGroup in m_JPD.JPD_ConstGroups)
         {
-            if (!Compile_RPC_SERVER())
+            ProtocolHdrContent += $@"
+struct {jpdConstGroup.Name}
+{{";
+            foreach(var jpdConst in jpdConstGroup.Consts)
             {
-                return false;
+                ProtocolHdrContent += $@"
+    static const {jpdConst.Type} {jpdConst.Name} = {jpdConst.Value};";
+            }
+            ProtocolHdrContent += $@"
+}};
+";
+        }
+
+        foreach (var jpdEnum in m_JPD.JPD_Enums)
+        {
+            ProtocolHdrContent += $@"
+enum class {jpdEnum.Name}
+{{";
+            foreach (var field in jpdEnum.Fields)
+            {
+                ProtocolHdrContent += $@"
+    {field},";
+            }
+            ProtocolHdrContent += $@"
+}};
+";
+        }
+
+        string typeOfMsgType = "";
+        if(simpleHdrMode) { typeOfMsgType = "BYTE"; }
+        else { typeOfMsgType = "WORD";  }
+
+        foreach(var jpdNamespace in m_JPD.JPD_Namespaces)
+        {
+            ProtocolHdrContent += $@"
+namespace {jpdNamespace.Namespace}
+{{";
+            foreach (var jpdMessage in jpdNamespace.Defines)
+            {
+                ProtocolHdrContent += $@"
+    static const {typeOfMsgType} {jpdMessage.Dir}_{jpdMessage.Message} = {jpdMessage.ID};";
+            }
+
+            ProtocolHdrContent += $@"
+
+#pragma pack(push, 1)
+";
+            foreach(var jpdMessage in jpdNamespace.Defines)
+            {
+                if (jpdMessage.Param.Count == 0)
+                {
+                    ProtocolHdrContent += $@"
+    struct MSG_{jpdMessage.Dir}_{jpdMessage.Message} {{
+        WORD type;
+    }};
+";
+                }
+                else
+                {
+                    ProtocolHdrContent += $@"
+    struct MSG_{jpdMessage.Dir}_{jpdMessage.Message}
+    {{
+        WORD type;";
+                    foreach (var parameters in jpdMessage.Param)
+                    {
+                        if (!string.IsNullOrEmpty(parameters.FixedLenOfArray))
+                        {
+                            ProtocolHdrContent += $@"
+        {parameters.Type} {parameters.Name}[{parameters.FixedLenOfArray}];";
+                        }
+                        else
+                        {
+                            ProtocolHdrContent += $@"
+        {parameters.Type} {parameters.Name};";
+                        }
+                    }
+
+                    ProtocolHdrContent += $@"
+    }};
+";
+                }
+            }
+
+            ProtocolHdrContent += $@"
+#pragma pack(pop)
+}};
+";
+        }
+
+        using (FileStream fs = OpenFile(protocolHdr))
+        {
+            using (StreamWriter sw = new StreamWriter(fs))
+            {
+                sw.Write(ProtocolHdrContent);
             }
         }
-        if (!string.IsNullOrEmpty(m_JPD.CLIENT_OUTPUT_DIR))
-        {
-            if (!Compile_RPC_CLIENT())
-            {
-                return false;
-            }
-        }
+
         return true;
     }
 
     private bool Compile_RPC_SERVER()
     {
-        foreach(var jpdNamespace in m_JPD.JPD)
+        foreach(var jpdNamespace in m_JPD.JPD_Namespaces)
         {
             MakeComm_Server(jpdNamespace);
             MakeProxy_Server(jpdNamespace);
@@ -460,11 +586,123 @@ public class JPDCompiler : MonoBehaviour
 
     private bool Compile_RPC_CLIENT()
     {
+        Make_MessaegeDefine();
+        Make_ConstGroups();
+        Make_Enums();
         MakeComm_Client();
-        MakeProxy_Client(m_JPD.JPD);
-        MakeStub_Client(m_JPD.JPD);
+        MakeProxy_Client(m_JPD.JPD_Namespaces);
+        MakeStub_Client(m_JPD.JPD_Namespaces);
 
         return true;
+    }
+
+    private void Make_MessaegeDefine()
+    {
+        if(m_JPD.JPD_Namespaces.Count == 0)
+        {
+            return;
+        }
+
+        string messageDefineCs = m_JPD.CLIENT_OUTPUT_DIR + "\\JPD_MESSAGE.cs";
+        string JpdMessageDefineContent = $@"
+using System;
+using System.Runtime.InteropServices;
+";
+        foreach(var jpdNamespace in m_JPD.JPD_Namespaces)
+        {
+            JpdMessageDefineContent += $@"
+    namespace {jpdNamespace.Namespace}
+    {{
+";
+            foreach(var jpdMessage in jpdNamespace.Defines)
+            {
+                JpdMessageDefineContent += $@"
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class MSG_{jpdMessage.Dir}_{jpdMessage.Message}
+        {{
+";
+                foreach(var paramter in jpdMessage.Param)
+                {
+                    JpdMessageDefineContent += $@"
+            public {TranslateCSharpType(paramter.Type)} {paramter.Name};
+";
+                }
+                JpdMessageDefineContent += $@"
+        }}
+";
+            }
+            JpdMessageDefineContent += $@"
+    }}
+";
+        }
+    }
+
+    private void Make_ConstGroups()
+    {
+        if(m_JPD.JPD_ConstGroups.Count == 0)
+        {
+            return;
+        }
+
+        string constGroupsCs = m_JPD.CLIENT_OUTPUT_DIR + "\\JPD_CONST.cs";
+        string JpdConstContent = $@"
+";
+        foreach (var constGroup in m_JPD.JPD_ConstGroups)
+        {
+            JpdConstContent += $@"
+static class {constGroup.Name}
+{{";
+            foreach(var jpdConst in constGroup.Consts)
+            {
+                JpdConstContent += $@"
+    public const {jpdConst.Type} {jpdConst.Name} = {jpdConst.Value};";
+            }
+            JpdConstContent += $@"
+}};
+";
+        }
+
+        using (FileStream fs = OpenFile(constGroupsCs))
+        {
+            using (StreamWriter sw = new StreamWriter(fs))
+            {
+                sw.Write(JpdConstContent);
+            }
+        }
+    }
+
+    private void Make_Enums()
+    {
+        if(m_JPD.JPD_Enums.Count == 0)
+        {
+            return;
+        }
+
+        string enumCs = m_JPD.CLIENT_OUTPUT_DIR + "\\JPD_ENUM.cs";
+        string JpdEnumContent = $@"
+";
+        foreach(var jpdEnum in m_JPD.JPD_Enums)
+        {
+            JpdEnumContent += $@"
+public enum {jpdEnum.Name}
+{{";
+            foreach(var field in jpdEnum.Fields)
+            {
+                JpdEnumContent += $@"
+    {field},";
+            }
+            JpdEnumContent += $@"
+}};
+";
+        }
+
+        using (FileStream fs = OpenFile(enumCs))
+        {
+            using (StreamWriter sw = new StreamWriter(fs))
+            {
+                sw.Write(JpdEnumContent);
+            }
+        }
     }
 
     private void MakeStub_Client(List<JPD_NAMESPACE> jpdNamespaces)
@@ -478,9 +716,9 @@ using UnityEngine;
 
 public class Stub : MonoBehaviour
 {{
-    public Dictionary<int, Action<byte[]>> methods = new Dictionary<int, Action<byte[]>>();
+    public Dictionary<UInt16, Action<byte[]>> methods = new Dictionary<UInt16, Action<byte[]>>();
     
-    protected Dictionary<string, byte> MessageIDs = new Dictionary<string, byte>()
+    protected Dictionary<string, UInt16> MessageIDs = new Dictionary<string, UInt16>()
     {{";
         foreach(var jpdNamespace in jpdNamespaces)
         {
@@ -545,7 +783,14 @@ public class {jpdNamespace.Namespace} : Stub_{jpdNamespace.Namespace}
             for(int i=0; i<jpdMessage.Param.Count; i++)
             {
                 string type = TranslateCSharpType(jpdMessage.Param[i].Type);
-                parameters += type + " " + jpdMessage.Param[i].Name;
+                if (string.IsNullOrEmpty(jpdMessage.Param[i].FixedLenOfArray))
+                {
+                    parameters += $"{type} {jpdMessage.Param[i].Name}";
+                }
+                else
+                {
+                    parameters += $"{type}[] {jpdMessage.Param[i].Name}";
+                }
                 if(i !=  jpdMessage.Param.Count - 1)
                 {
                     parameters += ", "; 
@@ -571,14 +816,14 @@ public class {jpdNamespace.Namespace} : Stub_{jpdNamespace.Namespace}
         }
     }
 
+    // Stub.cs 에 선언되는 abstract stub 클래스
     private string MakeClientStubClass(JPD_NAMESPACE jpdNamespace)
     {
         string stubClassDef = $@"
 public abstract class Stub_{jpdNamespace.Namespace} : Stub
 {{
     public void Init() 
-    {{
-";
+    {{";
         foreach(var jpdMessage in jpdNamespace.Defines)
         {
             if (jpdMessage.Dir == "S2C")
@@ -607,16 +852,33 @@ public abstract class Stub_{jpdNamespace.Namespace} : Stub
                 {
                     parameters += ", ";
                 }
+
                 string type = TranslateCSharpType(jpdMessage.Param[i].Type);
-                if (type == "Byte")
+
+                if (string.IsNullOrEmpty(jpdMessage.Param[i].FixedLenOfArray))
                 {
-                    stubClassDef += $@"
+                    if (type == "byte")
+                    {
+                        stubClassDef += $@"
         {type} {jpdMessage.Param[i].Name} = payload[offset++];";
+                    }
+                    else if (type == "float")
+                    {
+                        stubClassDef += $@"
+        {type} {jpdMessage.Param[i].Name} = BitConverter.ToSingle(payload, offset); offset += sizeof({type});";
+                    }
+                    else
+                    {
+                        stubClassDef += $@"
+        {type} {jpdMessage.Param[i].Name} = BitConverter.To{type}(payload, offset); offset += sizeof({type});";
+                    }
                 }
-                else
+                else   // Array
                 {
                     stubClassDef += $@"
-        {type} {jpdMessage.Param[i].Name} = BitConverter.To{type}(payload, offset); offset += sizeof({type});";
+        {type}[] {jpdMessage.Param[i].Name} = new {type}[{jpdMessage.Param[i].FixedLenOfArray}];
+        Buffer.BlockCopy(payload, offset, {jpdMessage.Param[i].Name}, 0, sizeof({type}) * {jpdMessage.Param[i].FixedLenOfArray});
+        offset += sizeof({type}) * {jpdMessage.Param[i].FixedLenOfArray};";
                 }
             }
             stubClassDef += $@"
@@ -632,7 +894,14 @@ public abstract class Stub_{jpdNamespace.Namespace} : Stub
             for (int i = 0; i < jpdMessage.Param.Count; i++)
             {
                 string type = TranslateCSharpType(jpdMessage.Param[i].Type);
-                paramters += (type + " " + jpdMessage.Param[i].Name);
+                if (string.IsNullOrEmpty(jpdMessage.Param[i].FixedLenOfArray))
+                {
+                    paramters += $"{type} {jpdMessage.Param[i].Name}";
+                }
+                else
+                {
+                    paramters += $"{type}[] {jpdMessage.Param[i].Name}";
+                }
                 if(i != jpdMessage.Param.Count - 1)
                 {
                     paramters += ", ";  
@@ -652,33 +921,40 @@ public abstract class Stub_{jpdNamespace.Namespace} : Stub
     private void MakeComm_Client()
     {
         string commRpcPath = m_JPD.CLIENT_OUTPUT_DIR + "\\RPC.cs";
-        string commNetworkPath = m_JPD.CLIENT_OUTPUT_DIR + "\\NetworkManager.cs";
+        string endecode = "";
+        if (endecodeFlag)
+        {
+            endecode = "true";
+        }
+        else
+        {
+            endecode = "false";
+        }
 
-        UInt32 ValidCode = 0;
-
-        UInt32 RECV_BUFFER_LENGTH = 0;
-
-        string RpcCSContent = $@"
+        // RPC.cs
+        string RpcCSContent = "";
+        if (simpleHdrMode)
+        {
+            RpcCSContent += "#define SIMPLE_PACKET";
+        }
+        else
+        {
+            RpcCSContent += "//#define SIMPLE_PACKET";
+        }
+        RpcCSContent += $@"
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-struct stMSG_HDR
-{{
-    public {TypeOfHdrCode} Code;
-    public {TypeOfHdrMsgLen} MsgLen;
-    public {TypeOfHdrMsgType} MsgType;
-}}
 
 public class RPC : MonoBehaviour
 {{
     static RPC s_Instance;
     public static RPC Instance {{ get {{ Init(); return s_Instance; }} }}
     public static Proxy proxy = new Proxy();
-    public static {TypeOfHdrCode} ValidCode = {ValidCode};
-    private Dictionary<int, Action<byte[]>> StubMethods = new Dictionary<int, Action<byte[]>>();
+    public static byte ValidCode = {validCode};
+    public static bool EnDecodeFlag = {endecode};
+    private Dictionary<UInt16, Action<byte[]>> StubMethods = new Dictionary<UInt16, Action<byte[]>>();
 
     NetworkManager m_NetworkManager = new NetworkManager();
     public static NetworkManager Network {{ get {{ return Instance.m_NetworkManager; }} }}
@@ -691,7 +967,7 @@ public class RPC : MonoBehaviour
     private static void Init()
     {{
         GameObject go = GameObject.Find(""@RPC"");
-        if(go == null)
+        if (go == null)
         {{
             go = new GameObject {{ name = ""@RPC"" }};
             go.AddComponent<RPC>();
@@ -703,7 +979,12 @@ public class RPC : MonoBehaviour
 
     public bool Initiate(string serverIP, UInt16 serverPort)
     {{
-        return Network.Connect(serverIP, serverPort);
+        if (!Network.Connected)
+        {{
+            return Network.Connect(serverIP, serverPort);
+        }}
+
+        return true;
     }}
 
     public void AttachStub(Stub stub)
@@ -716,13 +997,14 @@ public class RPC : MonoBehaviour
 
     private void Update()
     {{
-        while(Network.ReceivedDataSize() >= Marshal.SizeOf<stMSG_HDR>())
+#if SIMPLE_PACKET
+        while (Network.ReceivedDataSize() >= Marshal.SizeOf<JNET_PROTOCOL.SIMPLE_MSG_HDR>())
         {{
-            stMSG_HDR hdr;
-            Network.Peek<stMSG_HDR>(out hdr);
-            if (Marshal.SizeOf<stMSG_HDR>() + hdr.MsgLen <= Network.ReceivedDataSize())
+            JNET_PROTOCOL.SIMPLE_MSG_HDR hdr;
+            Network.Peek<JNET_PROTOCOL.SIMPLE_MSG_HDR>(out hdr);
+            if (Marshal.SizeOf<JNET_PROTOCOL.SIMPLE_MSG_HDR>() + hdr.MsgLen <= Network.ReceivedDataSize())
             {{
-                Network.ReceiveData<stMSG_HDR>(out hdr);
+                Network.ReceiveData<JNET_PROTOCOL.SIMPLE_MSG_HDR>(out hdr);
                 byte[] payload = Network.ReceiveBytes(hdr.MsgLen);
                 if (StubMethods.ContainsKey(hdr.MsgType))
                 {{
@@ -734,331 +1016,32 @@ public class RPC : MonoBehaviour
                 break;
             }}
         }}
+#else
+        while (Network.ReceivedDataSize() >= Marshal.SizeOf<JNET_PROTOCOL.MSG_HDR>())
+        {{
+            byte[] payload;
+            if (Network.ReceivePacketBytes(out payload, EnDecodeFlag))
+            {{
+                UInt16 msgType = BitConverter.ToUInt16(payload, 0);
+                if (StubMethods.ContainsKey(msgType))
+                {{
+                    StubMethods[msgType].Invoke(new ArraySegment<byte>(payload, sizeof(UInt16), payload.Length - sizeof(UInt16)).ToArray());
+                }}
+            }}
+            else
+            {{
+                break;
+            }}
+        }}
+#endif
     }}
 }}
 ";
-
-        string NetMgrCSContent = $@"
-using System;
-using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
-
-public class NetBuffer
-{{
-    private byte[] m_Buffer;
-    private int m_Index;
-
-    public int BufferedSize {{ get {{ return m_Index; }} }}
-    public int FreeSize {{ get {{ return m_Buffer.Length - m_Index; }} }}
-
-    public NetBuffer(int buffSize)
-    {{
-        m_Buffer = new byte[buffSize];
-    }}
-
-    public bool Peek(byte[] dest, int length, int offset = 0)
-    {{
-        if(length + offset > m_Index)
-        {{
-            return false;
-        }}
-
-        Array.Copy(m_Buffer, offset, dest, 0, length);
-        return true;
-    }}
-
-    public bool Write(byte[] source, int length, int offset = 0)
-    {{
-        if (m_Index + length > m_Buffer.Length)
-        {{
-            return false;
-        }}
-
-        Array.Copy(source, offset, m_Buffer, m_Index, length);
-        m_Index += length;
-        return true;
-    }}
-    public bool WriteFront(byte[] source, int length, int offset = 0)
-    {{
-        if (m_Index + length > m_Buffer.Length)
-        {{
-            return false;
-        }}
-
-        if (m_Index == 0)
-        {{
-            Write(source, length, offset);
-        }}
-        else
-        {{
-            byte[] newBuffer = new byte[m_Buffer.Length];
-
-            Array.Copy(source, 0, newBuffer, 0, length);
-            Array.Copy(m_Buffer, 0, newBuffer, length, BufferedSize);
-            m_Index = BufferedSize + length;
-            m_Buffer = newBuffer;
-        }}
-
-        return true;
-    }}
-
-    public bool Read(byte[] dest, int length)
-    {{
-        if (m_Index < length)
-        {{
-            return false;
-        }}
-
-        Array.Copy(m_Buffer, dest, length);
-
-        if (m_Index == length)
-        {{
-            m_Index = 0;
-        }}
-        else
-        {{
-            byte[] newBuffer = new byte[m_Buffer.Length];
-            Array.Copy(m_Buffer, length, newBuffer, 0, BufferedSize - length);
-            m_Index = BufferedSize - length;
-            m_Buffer = newBuffer;
-        }}
-        return true;
-    }}
-}}
-
-public class NetworkManager
-{{
-    private TcpClient m_TcpClient = null;
-    private NetworkStream m_Stream = null;
-
-    private NetBuffer m_RecvBuffer = new NetBuffer({RECV_BUFFER_LENGTH});
-
-    private System.Random m_RandKeyMaker = new System.Random();
-
-    public NetworkManager(IPEndPoint ipEndPoint = null)
-    {{
-        if (ipEndPoint == null)
-        {{
-            m_TcpClient = new TcpClient();
-        }}
-        else
-        {{
-            m_TcpClient = new TcpClient(ipEndPoint);
-            m_Stream = m_TcpClient.GetStream();
-        }}
-    }}
-
-    public bool Connected {{ get {{ return m_TcpClient.Connected; }} }}
-
-    public bool Connect(string serverIP = ""127.0.0.1"", int port = 7777)
-    {{
-        if (!Connected)
-        {{
-            try
-            {{
-                m_TcpClient.Connect(IPAddress.Parse(serverIP), port);
-                m_Stream = m_TcpClient.GetStream();
-            }}
-            catch
-            {{
-                return false;
-            }}
-        }}
-
-        return true;
-    }}
-
-    public void Disconnect()
-    {{
-        if (Connected)
-        {{
-            m_TcpClient.Close();
-        }}
-    }}
-
-    public void ClearRecvBuffer()
-    {{
-        while (m_Stream.DataAvailable)
-        {{
-            byte[] buffer = new byte[1024];
-            m_Stream.Read(buffer, 0, buffer.Length);
-        }}
-    }}
-
-    public void SendBytes(byte[] data)
-    {{
-        m_Stream.Write(data);
-    }}
-
-    public bool ReceiveDataAvailable()
-    {{
-        return m_Stream.DataAvailable;
-    }}
-
-    public int ReceivedDataSize()
-    {{
-        return m_RecvBuffer.BufferedSize + m_TcpClient.Available;
-    }}
-
-    public bool Peek<T>(out T data)
-    {{
-        int dataSize = Marshal.SizeOf(typeof(T));
-        if (m_RecvBuffer.BufferedSize + m_TcpClient.Available < dataSize)
-        {{
-            data = default(T);
-            return false;
-        }}
-
-        if(m_RecvBuffer.BufferedSize < dataSize)
-        {{
-            int resSize = dataSize - m_RecvBuffer.BufferedSize; 
-            if(m_RecvBuffer.FreeSize < resSize)
-            {{
-                data = default(T);
-                return false;
-            }}
-
-            byte[] buffer = new byte[resSize];  
-            m_Stream.Read(buffer, 0, buffer.Length);
-            m_RecvBuffer.Write(buffer, resSize, 0); 
-        }}
-
-        byte[] bytes = new byte[dataSize];
-        m_RecvBuffer.Peek(bytes, bytes.Length, 0);
-        data = BytesToMessage<T>(bytes);
-
-        return true;
-    }}
-
-    public byte[] ReceiveBytes(int length)
-    {{
-        byte[] bytes = new byte[length];
-        if (m_RecvBuffer.BufferedSize + m_TcpClient.Available < length)
-        {{
-            return null;
-        }}
-
-        if(m_RecvBuffer.BufferedSize >= length)
-        {{
-            m_RecvBuffer.Read(bytes, length);
-        }}
-        else
-        {{
-            int buffedSize = m_RecvBuffer.BufferedSize;
-            m_RecvBuffer.Read(bytes, buffedSize);
-            m_Stream.Read(bytes, buffedSize, length - buffedSize);
-        }}
-        return bytes;
-    }}
-
-    public bool ReceiveData<T>(out T data)
-    {{
-        data = default(T);
-
-        if (ReceivedDataSize() < Marshal.SizeOf<T>())
-        {{
-            return false;
-        }}
-
-        byte[] receivedBytes = new byte[Marshal.SizeOf<T>()];
-        if(m_RecvBuffer.BufferedSize >= receivedBytes.Length)
-        {{
-            m_RecvBuffer.Read(receivedBytes, receivedBytes.Length);
-        }}
-        else
-        {{
-            int bufferedSize = m_RecvBuffer.BufferedSize;
-            m_RecvBuffer.Read(receivedBytes, bufferedSize);
-            m_Stream.Read(receivedBytes, bufferedSize, receivedBytes.Length - bufferedSize);
-        }}
-
-        data = BytesToMessage<T>(receivedBytes);    
-        return true;
-    }}
-
-    private byte[] MessageToBytes<T>(T str)
-    {{
-        int size = Marshal.SizeOf(str);
-        byte[] arr = new byte[size];
-        IntPtr ptr = Marshal.AllocHGlobal(size);
-        try
-        {{
-            Marshal.StructureToPtr(str, ptr, false);
-            Marshal.Copy(ptr, arr, 0, size);
-        }}
-        catch (Exception ex)
-        {{
-            Debugger.Break();
-        }}
-        finally
-        {{
-            // 할당받은 네이티브 메모리 해제
-            Marshal.FreeHGlobal(ptr);
-        }}
-
-        return arr;
-    }}
-
-    public void MessageToBytes<T>(T str, byte[] dest)
-    {{
-        int size = Marshal.SizeOf(str);
-
-        IntPtr ptr = Marshal.AllocHGlobal(size);
-        try
-        {{
-            Marshal.StructureToPtr(str, ptr, false);
-            Marshal.Copy(ptr, dest, 0, size);
-        }}
-        catch (Exception ex)
-        {{
-            Debugger.Break();
-        }}
-        finally
-        {{
-            // 할당받은 네이티브 메모리 해제
-            Marshal.FreeHGlobal(ptr);
-        }}
-    }}
-
-    public T BytesToMessage<T>(byte[] bytes)
-    {{
-        T str = default(T);
-        int size = Marshal.SizeOf<T>();
-        IntPtr ptr = Marshal.AllocHGlobal(size);
-
-        try
-        {{
-            Marshal.Copy(bytes, 0, ptr, size);
-            str = Marshal.PtrToStructure<T>(ptr);
-        }}
-        catch (Exception ex)
-        {{
-            Debugger.Break();
-        }}
-        finally
-        {{
-            Marshal.FreeHGlobal(ptr);
-        }}
-
-        return str;
-    }}
-}}
-";
-
         using(FileStream fsRpc = OpenFile(commRpcPath))
         {
             using(StreamWriter sw = new StreamWriter(fsRpc))
             {
                 sw.Write(RpcCSContent);
-            }
-        }
-        using (FileStream fsNet = OpenFile(commNetworkPath))
-        {
-            using(StreamWriter sw = new StreamWriter(fsNet))
-            {
-                sw.Write(NetMgrCSContent);
             }
         }
     }
@@ -1075,7 +1058,7 @@ using System.Runtime.InteropServices;
 
 public class Proxy
 {{
-    Dictionary<string, {TypeOfHdrMsgType}> MessageIDs = new Dictionary<string, {TypeOfHdrMsgType}>()
+    Dictionary<string, UInt16> MessageIDs = new Dictionary<string, UInt16>()
     {{
 ";
         foreach (var jpdNamespace in jpdNamespaces)
@@ -1134,20 +1117,32 @@ public class Proxy
         for(int i=0; i<jpdMessage.Param.Count; i++)
         {
             string type = TranslateCSharpType(jpdMessage.Param[i].Type);
-            parmeters += type + " " + jpdMessage.Param[i].Name;
-            sizeofParamters += "Marshal.SizeOf(" + jpdMessage.Param[i].Name + ")";
+            if (string.IsNullOrEmpty(jpdMessage.Param[i].FixedLenOfArray))
+            {
+                parmeters += $"{type} {jpdMessage.Param[i].Name}";
+                sizeofParamters += $"sizeof({type})";
+            }
+            else {
+                parmeters += $"{type}[] {jpdMessage.Param[i].Name}";
+                sizeofParamters += $"sizeof({type}) * {jpdMessage.Param[i].FixedLenOfArray}";
+            }
+
             if (i != jpdMessage.Param.Count - 1)
             {
                 parmeters += ", ";
                 sizeofParamters += " + ";
             }
         }
+
         string funcDef = $@"
     public void {jpdMessage.Message}({parmeters})
-    {{
+    {{";
+        if (simpleHdrMode)
+        {
+            funcDef += $@"
         stMSG_HDR hdr = new stMSG_HDR();
         hdr.Code = RPC.ValidCode;
-        hdr.MsgLen = ({TypeOfHdrMsgLen})({sizeofParamters});
+        hdr.MsgLen = (Byte)({sizeofParamters});
         hdr.MsgType = MessageIDs[""{jpdMessage.Message}""];
 
         byte[] bytes = new byte[Marshal.SizeOf(hdr) + hdr.MsgLen];
@@ -1158,70 +1153,163 @@ public class Proxy
         int offset = 0;
         Buffer.BlockCopy(bytesHdr, 0, bytes, offset, Marshal.SizeOf(hdr)); offset += Marshal.SizeOf(hdr);";
 
-        foreach(var param in jpdMessage.Param)
-        {
-            string csharType = TranslateCSharpType(param.Type); 
-            if(csharType == "Byte")
+            foreach (var param in jpdMessage.Param)
             {
-                funcDef += $@"
+                string csharType = TranslateCSharpType(param.Type);
+                if (csharType == "byte")
+                {
+                    funcDef += $@"
         bytes[offset++] = {param.Name};";
-            }
-            else
-            {
-                funcDef += $@"
+                }
+                else
+                {
+                    funcDef += $@"
         Buffer.BlockCopy(BitConverter.GetBytes({param.Name}), 0, bytes, offset, sizeof({csharType})); offset += sizeof({csharType});";
+                }
+            }
+
+            funcDef += $@"
+        RPC.Network.SendBytes(bytes);          
+";
+        }
+        else
+        {
+            if(jpdMessage.Param.Count > 0)
+            {
+                sizeofParamters = " + " + sizeofParamters;
+            }
+            funcDef += $@"
+        UInt16 type = MessageIDs[""{jpdMessage.Message}""];
+        byte[] payload = new byte[sizeof(UInt16){sizeofParamters}];
+        int offset = 0;
+        Buffer.BlockCopy(BitConverter.GetBytes(type), 0, payload, offset, sizeof(UInt16)); offset += sizeof(UInt16);";
+            foreach(var  param in jpdMessage.Param)
+            {
+                string csharType = TranslateCSharpType(param.Type);  
+                if (string.IsNullOrEmpty(param.FixedLenOfArray))
+                {
+                    if(csharType == "byte")
+                    {
+                        funcDef += $@"
+        payload[offset++] = {param.Name};";
+                    }
+                    else
+                    {
+                        funcDef += $@"
+        Buffer.BlockCopy(BitConverter.GetBytes({param.Name}), 0, payload, offset, sizeof({csharType})); offset += sizeof({csharType});";
+                    }
+                }
+                else
+                {
+                    funcDef += $@"
+        Buffer.BlockCopy({param.Name}, 0, payload, offset, sizeof({csharType}) * {param.FixedLenOfArray}); offset += sizeof({csharType}) * {param.FixedLenOfArray};";
+                }
             }
         }
-
         funcDef += $@"
-        RPC.Network.SendBytes(bytes);          
+        RPC.Network.SendPacketBytes(payload, RPC.EnDecodeFlag);
     }}
 ";
 
         return funcDef;
     }
 
-    string TranslateCSharpType(string type)
+    string TranslateCppType(string type)
     {
         string ret = string.Empty;
-        switch (type)
+
+        if (type == "byte" || type == "Byte" || type == "UINT8" || type == "uint8")
         {
-            case "BYTE":
-                ret = "Byte";
-                break;
-            case "CHAR":
-                ret = "Char";
-                break;
-            case "UINT16":
-                ret = "UInt16";
-                break;
-            case "INT16":
-                ret = "Int16";
-                break;
-            case "UINT32":
-                ret = "UInt32";
-                break;
-            case "INT32":
-                ret = "Int32";
-                break;
-            case "UINT64":
-                ret = "UInt64";
-                break;
-            case "INT64":
-                ret = "Int64";
-                break;
-            default:
-                ret = type; 
-                break;
+            ret = "BYTE";
+        }
+        else if (type == "char" || type == "Char" || type == "INT8" || type == "int8")
+        {
+            ret = "CHAR";
+        }
+        else if (type == "USHORT" || type == "ushort" || type == "UInt16" || type == "uint16")
+        {
+            ret = "UINT16";
+        }
+        else if (type == "SHORT" || type == "short" || type == "Int16" || type == "int16")
+        {
+            ret = "INT16";
+        }
+        else if (type == "UINT" || type == "uint" || type == "UInt32" || type == "uint32")
+        {
+            ret = "UINT32";
+        }
+        else if (type == "INT" || type == "int" || type == "Int32" || type == "int32")
+        {
+            ret = "INT32";
+        }
+        else if (type == "UInt64" || type == "uint64")
+        {
+            ret = "UINT64";
+        }
+        else if (type == "Int64" || type == "int64")
+        {
+            ret = "INT64";
+        }
+        else
+        {
+            ret = type;
         }
 
         return ret;
     }
 
-    private bool Compile_HDR_ONLY()
+    string TranslateCSharpType(string type)
     {
+        string ret = string.Empty;
 
-        return true;
+        if(type == "FLOAT" || type == "Float")
+        {
+            ret = "float";
+        }
+        else if(type == "DOUBLE" || type == "Double")
+        {
+            ret = "double";
+        }
+        if(type == "BYTE" || type == "byte" || type =="UINT8" || type == "uint8")
+        {
+            ret = "byte";
+        }
+        else if(type == "CHAR" || type == "char" || type == "INT8" || type == "int8")
+        {
+            //ret = "char";
+            // => C#의 Char, char은 2바이트
+            ret = "byte";
+        }
+        else if(type == "USHORT" || type == "ushort" || type == "UINT16" || type == "uint16")
+        {
+            ret = "UInt16";
+        }
+        else if (type == "SHORT" || type == "short" || type == "INT16" || type == "int16")
+        {
+            ret = "Int16";
+        }
+        else if (type == "UINT" || type == "uint" || type == "UINT32" || type == "uint32")
+        {
+            ret = "UInt32";
+        }
+        else if (type == "INT" || type == "int" || type == "INT32" || type == "int32")
+        {
+            ret = "Int32";
+        }
+        else if (type == "UINT64" || type == "uint64")
+        {
+            ret = "UInt64";
+        }
+        else if (type == "INT64" || type == "int64")
+        {
+            ret = "Int64";
+        }
+        else
+        {
+            ret = type;
+        }
+
+        return ret;
     }
 
     private FileStream OpenFile(string path)

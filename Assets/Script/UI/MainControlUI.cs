@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net.NetworkInformation;
 using System.Windows.Forms;
@@ -32,7 +33,8 @@ public class MainControlUI : UI_Base
 
     enum Dropdowns
     {
-        CompileMode,
+        ServerCompileMode,
+        ClientCompileMode,
     }
 
     enum InputFields
@@ -59,7 +61,8 @@ public class MainControlUI : UI_Base
         Button loadBtn = GetButton((int)Buttons.LoadBtn);
         Button saveBtn = GetButton((int)Buttons.SaveBtn);
         Button compileBtn = GetButton((int)Buttons.CompileBtn);
-        Dropdown complieModeDropDown = GetDropdown((int)Dropdowns.CompileMode);
+        Dropdown serverCompileMode = GetDropdown((int)Dropdowns.ServerCompileMode);
+        Dropdown clientCompileMode = GetDropdown((int)Dropdowns.ClientCompileMode);
         Toggle serverToggle = GetToggle((int)Toggles.ServerToggle);
         Toggle clientToggle = GetToggle((int)Toggles.ClientToggle);
         InputField serverPathInput = GetInputField((int)InputFields.ServerPathInput);
@@ -84,7 +87,9 @@ public class MainControlUI : UI_Base
         saveBtn.interactable = false;
         compileBtn.interactable = false;
 
-        complieModeDropDown.interactable = false;
+        serverCompileMode.interactable = false;
+        clientCompileMode.interactable = false;
+
         serverToggle.interactable = false;
         clientToggle.interactable = false;  
         serverPathInput.interactable = false;
@@ -100,7 +105,8 @@ public class MainControlUI : UI_Base
         GetButton((int)Buttons.NewBtn).interactable = false;
         GetButton((int)Buttons.LoadBtn).interactable = false;
 
-        GetDropdown((int)Dropdowns.CompileMode).interactable = true;
+        GetDropdown((int)Dropdowns.ServerCompileMode).interactable = true;
+        GetDropdown((int)Dropdowns.ClientCompileMode).interactable = true;
         GetToggle((int)Toggles.ServerToggle).interactable = true;
         GetToggle((int)Toggles.ClientToggle).interactable = true;
         GetInputField((int)InputFields.ServerPathInput).interactable = true;
@@ -120,17 +126,25 @@ public class MainControlUI : UI_Base
             JPDCompiler.Instance.LoadJson(jsonFilePath);
 
             // 컴파일 모드 설정
-            if(JPDCompiler.JPDSchema.COMPILE_MODE == "RPC")
+            if(JPDCompiler.JPDSchema.SERVER_COMPILE_MODE == "RPC")
             {
-                GetDropdown((int)Dropdowns.CompileMode).value = 0;
+                GetDropdown((int)Dropdowns.ServerCompileMode).value = 0;
             }
-            else if(JPDCompiler.JPDSchema.COMPILE_MODE == "HeaderOnly")
+            else if(JPDCompiler.JPDSchema.SERVER_COMPILE_MODE == "HEADER_ONLY")
             {
-                GetDropdown((int)Dropdowns.CompileMode).value = 1;
+                GetDropdown((int)Dropdowns.ServerCompileMode).value = 1;
+            }
+            if (JPDCompiler.JPDSchema.CLIENT_COMPILE_MODE== "RPC")
+            {
+                GetDropdown((int)Dropdowns.ClientCompileMode).value = 0;
+            }
+            else if (JPDCompiler.JPDSchema.CLIENT_COMPILE_MODE == "HEADER_ONLY")
+            {
+                GetDropdown((int)Dropdowns.ClientCompileMode).value = 1;
             }
 
             // 서버 경로 설정
-            if(JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR != string.Empty)
+            if (JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR != string.Empty)
             {
                 GetToggle((int)Toggles.ServerToggle).isOn = true;
             }
@@ -154,7 +168,8 @@ public class MainControlUI : UI_Base
 
             GetButton((int)Buttons.NewBtn).interactable = false;
             GetButton((int)Buttons.LoadBtn).interactable = false;
-            GetDropdown((int)Dropdowns.CompileMode).interactable = true;
+            GetDropdown((int)Dropdowns.ServerCompileMode).interactable = true;
+            GetDropdown((int)Dropdowns.ClientCompileMode).interactable = true;
             GetToggle((int)Toggles.ServerToggle).interactable = true;
             GetToggle((int)Toggles.ClientToggle).interactable = true;
             GetInputField((int)InputFields.ServerPathInput).interactable = true;
@@ -230,7 +245,8 @@ public class MainControlUI : UI_Base
             return;
         }
 
-        int compileMode = GetDropdown((int)Dropdowns.CompileMode).value;
+        int serverCompileMode = GetDropdown((int)Dropdowns.ServerCompileMode).value;
+        int clientCompileMode = GetDropdown((int)Dropdowns.ClientCompileMode).value;
         string serverpath = string.Empty;
         string clientpath = string.Empty;
         if (GetToggle((int)Toggles.ServerToggle).isOn)
@@ -242,11 +258,13 @@ public class MainControlUI : UI_Base
             clientpath = GetInputField((int)InputFields.ClientPathInput).text;
         }
 
-        JPDCompiler.JPDSchema.COMPILE_MODE = Enum.GetName(typeof(CompileMode), (CompileMode)compileMode);
+        JPDCompiler.JPDSchema.SERVER_COMPILE_MODE = Enum.GetName(typeof(CompileMode), (CompileMode)serverCompileMode);
+        JPDCompiler.JPDSchema.CLIENT_COMPILE_MODE = Enum.GetName(typeof(CompileMode), (CompileMode)clientCompileMode);
         JPDCompiler.JPDSchema.SERVER_OUTPUT_DIR = serverpath;
         JPDCompiler.JPDSchema.CLIENT_OUTPUT_DIR = clientpath;
 
         // 컴파일 모드에 따른 UI 추가
+        /*
         if (compileMode == (int)CompileMode.RPC)
         {
             GameObject prefab = Resources.Load<GameObject>("Prefabs/JRpcGroup");
@@ -261,6 +279,15 @@ public class MainControlUI : UI_Base
         {
 
         }
+        */
+        // => 컴파일 모드와 상관없이 동일한 UI 적용하도록
+        GameObject prefab = Resources.Load<GameObject>("Prefabs/JpdUI");
+        if (prefab == null)
+        {
+            Debug.Log($"Failed to load prefab : Prefabs/JpdUI");
+            return;
+        }
+        Object.Instantiate(prefab, gameObject.transform.parent);
 
         GetButton((int)Buttons.SaveBtn).interactable = true;
         GetButton((int)Buttons.CompileBtn).interactable = true;  
@@ -273,7 +300,8 @@ public class MainControlUI : UI_Base
         GetButton((int)Buttons.NewBtn).interactable = true;
         GetButton((int)Buttons.LoadBtn).interactable = true;
 
-        GetDropdown((int)Dropdowns.CompileMode).interactable = false;
+        GetDropdown((int)Dropdowns.ServerCompileMode).interactable = false;
+        GetDropdown((int)Dropdowns.ClientCompileMode).interactable = false;
         GetToggle((int)Toggles.ServerToggle).isOn = false;
         GetToggle((int)Toggles.ClientToggle).isOn = false;
         GetToggle((int)Toggles.ServerToggle).interactable = false;

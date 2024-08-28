@@ -23,11 +23,11 @@ public class UI_Base : MonoBehaviour
         {
             if (typeof(T) == typeof(GameObject))
             {
-                objects[i] = Utill.FindChild(gameObject, enumNames[i], true);
+                objects[i] = Util.FindChild(gameObject, enumNames[i], true);
             }
             else
             {
-                objects[i] = Utill.FindChild<T>(gameObject, enumNames[i], true);
+                objects[i] = Util.FindChild<T>(gameObject, enumNames[i], true);
             }
 
             if (objects[i] == null)
@@ -58,7 +58,7 @@ public class UI_Base : MonoBehaviour
 
     public static void BindEvent(GameObject go, Action<PointerEventData> action, Define.UIEvent type = Define.UIEvent.Click)
     {
-        UI_EventHandler evt = Utill.GetOrAddComponent<UI_EventHandler>(go);
+        UI_EventHandler evt = Util.GetOrAddComponent<UI_EventHandler>(go);
 
         switch (type)
         {

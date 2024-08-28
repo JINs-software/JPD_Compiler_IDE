@@ -1,5 +1,5 @@
 using UnityEngine;
-public class Utill
+public class Util
 {
     public static T GetOrAddComponent<T>(GameObject go) where T : UnityEngine.Component
     {
