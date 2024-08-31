@@ -775,6 +775,11 @@ public class {jpdNamespace.Namespace} : Stub_{jpdNamespace.Namespace}
         base.Init();
     }}
 
+    private void OnDestroy()
+    {{
+        base.Clear();  
+    }}
+
 ";
         foreach(var jpdMessage in jpdNamespace.Defines)
         {
@@ -836,6 +841,10 @@ public abstract class Stub_{jpdNamespace.Namespace} : Stub
         RPC.Instance.AttachStub(this);
     }}
 
+    public void Clear()
+    {{
+        RPC.Instance.DetachStub(this);
+    }}
 ";
         foreach (var jpdMessage in jpdNamespace.Defines)
         {
@@ -959,6 +968,9 @@ public class RPC : MonoBehaviour
     NetworkManager m_NetworkManager = new NetworkManager();
     public static NetworkManager Network {{ get {{ return Instance.m_NetworkManager; }} }}
 
+    private string ServerIP;
+    private UInt16 ServerPort;
+
     private void Start()
     {{
         Init();
@@ -979,6 +991,9 @@ public class RPC : MonoBehaviour
 
     public bool Initiate(string serverIP, UInt16 serverPort)
     {{
+        ServerIP = serverIP;
+        ServerPort = serverPort;   
+
         if (!Network.Connected)
         {{
             return Network.Connect(serverIP, serverPort);
@@ -991,8 +1006,37 @@ public class RPC : MonoBehaviour
     {{
         foreach (var method in stub.methods)
         {{
+            if (StubMethods.ContainsKey(method.Key))
+            {{
+                StubMethods.Remove(method.Key);
+            }}
             StubMethods.Add(method.Key, method.Value);
         }}
+    }}
+
+    public void DetachStub(Stub stub)
+    {{
+        foreach(var method in stub.methods)
+        {{
+            if (StubMethods.ContainsKey(method.Key))
+            {{
+                StubMethods.Remove(method.Key);
+            }}
+        }}
+    }}
+
+    public NetworkManager AllocNewClientSession()
+    {{
+        NetworkManager newSession = new NetworkManager();
+        if(newSession != null)
+        {{
+            if(newSession.Connect(ServerIP, ServerPort))
+            {{
+                return newSession;
+            }}
+        }}
+
+        return null;
     }}
 
     private void Update()
@@ -1127,15 +1171,16 @@ public class Proxy
                 sizeofParamters += $"sizeof({type}) * {jpdMessage.Param[i].FixedLenOfArray}";
             }
 
+            parmeters += ", ";
             if (i != jpdMessage.Param.Count - 1)
             {
-                parmeters += ", ";
+                //parmeters += ", ";
                 sizeofParamters += " + ";
             }
         }
 
         string funcDef = $@"
-    public void {jpdMessage.Message}({parmeters})
+    public void {jpdMessage.Message}({parmeters} NetworkManager sesion = null)
     {{";
         if (simpleHdrMode)
         {
@@ -1202,12 +1247,13 @@ public class Proxy
                 else
                 {
                     funcDef += $@"
-        Buffer.BlockCopy({param.Name}, 0, payload, offset, sizeof({csharType}) * {param.FixedLenOfArray}); offset += sizeof({csharType}) * {param.FixedLenOfArray};";
+        Buffer.BlockCopy({param.Name}, 0, payload, offset, {param.Name}.Length); offset += sizeof({csharType}) * {param.FixedLenOfArray};";
                 }
             }
         }
         funcDef += $@"
-        RPC.Network.SendPacketBytes(payload, RPC.EnDecodeFlag);
+        if (sesion == null) {{ RPC.Network.SendPacketBytes(payload, RPC.EnDecodeFlag); }}
+        else {{ sesion.SendPacketBytes(payload, RPC.EnDecodeFlag); }}
     }}
 ";
 
