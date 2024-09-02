@@ -1093,7 +1093,10 @@ public class RPC : MonoBehaviour
     private void MakeProxy_Client(List<JPD_NAMESPACE> jpdNamespaces)
     {
         string proxyPath = m_JPD.CLIENT_OUTPUT_DIR + "\\Proxy.cs";
-        UInt32 ValidCode = 0;
+
+        string typeofPacket = "";
+        if (SimpleHdrMode) typeofPacket = "byte";
+        else typeofPacket = "UInt16";
 
         string intro = $@"
 using System;
@@ -1102,7 +1105,7 @@ using System.Runtime.InteropServices;
 
 public class Proxy
 {{
-    Dictionary<string, UInt16> MessageIDs = new Dictionary<string, UInt16>()
+    Dictionary<string, {typeofPacket}> MessageIDs = new Dictionary<string, {typeofPacket}>()
     {{
 ";
         foreach (var jpdNamespace in jpdNamespaces)
@@ -1185,7 +1188,7 @@ public class Proxy
         if (simpleHdrMode)
         {
             funcDef += $@"
-        stMSG_HDR hdr = new stMSG_HDR();
+        JNET_PROTOCOL.SIMPLE_MSG_HDR hdr = new JNET_PROTOCOL.SIMPLE_MSG_HDR();
         hdr.Code = RPC.ValidCode;
         hdr.MsgLen = (Byte)({sizeofParamters});
         hdr.MsgType = MessageIDs[""{jpdMessage.Message}""];
@@ -1193,7 +1196,7 @@ public class Proxy
         byte[] bytes = new byte[Marshal.SizeOf(hdr) + hdr.MsgLen];
 
         byte[] bytesHdr = new byte[Marshal.SizeOf(hdr)];
-        RPC.Network.MessageToBytes<stMSG_HDR>(hdr, bytesHdr);
+        RPC.Network.MessageToBytes<JNET_PROTOCOL.SIMPLE_MSG_HDR >(hdr, bytesHdr);
 
         int offset = 0;
         Buffer.BlockCopy(bytesHdr, 0, bytes, offset, Marshal.SizeOf(hdr)); offset += Marshal.SizeOf(hdr);";
@@ -1219,7 +1222,7 @@ public class Proxy
         }
         else
         {
-            if(jpdMessage.Param.Count > 0)
+            if (jpdMessage.Param.Count > 0)
             {
                 sizeofParamters = " + " + sizeofParamters;
             }
@@ -1228,12 +1231,12 @@ public class Proxy
         byte[] payload = new byte[sizeof(UInt16){sizeofParamters}];
         int offset = 0;
         Buffer.BlockCopy(BitConverter.GetBytes(type), 0, payload, offset, sizeof(UInt16)); offset += sizeof(UInt16);";
-            foreach(var  param in jpdMessage.Param)
+            foreach (var param in jpdMessage.Param)
             {
-                string csharType = TranslateCSharpType(param.Type);  
+                string csharType = TranslateCSharpType(param.Type);
                 if (string.IsNullOrEmpty(param.FixedLenOfArray))
                 {
-                    if(csharType == "byte")
+                    if (csharType == "byte")
                     {
                         funcDef += $@"
         payload[offset++] = {param.Name};";
@@ -1250,10 +1253,11 @@ public class Proxy
         Buffer.BlockCopy({param.Name}, 0, payload, offset, {param.Name}.Length); offset += sizeof({csharType}) * {param.FixedLenOfArray};";
                 }
             }
+            funcDef += $@"
+            if (sesion == null) {{ RPC.Network.SendPacketBytes(payload, RPC.EnDecodeFlag); }}
+            else {{ sesion.SendPacketBytes(payload, RPC.EnDecodeFlag); }};";
         }
         funcDef += $@"
-        if (sesion == null) {{ RPC.Network.SendPacketBytes(payload, RPC.EnDecodeFlag); }}
-        else {{ sesion.SendPacketBytes(payload, RPC.EnDecodeFlag); }}
     }}
 ";
 

@@ -111,6 +111,7 @@ public class NamespaceDefineUI : UI_Base
         {
             endecodeToggle.interactable = false;
             JPDCompiler.SimpleHdrMode = true;
+            JPDCompiler.EnDecodeFlag = false;
         }
         else
         {
