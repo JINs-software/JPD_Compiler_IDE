@@ -1,11 +1,10 @@
 ### \[개요\]
 네트워크 코어 라이브러리(JiniNet, https://github.com/JINs-software/JiniNet)를 통한 서버 구현에 있어 메시지 송신 시 직렬화 버퍼를 할당받고, 메시지 내용을 기입한 후 라이브러리에서 제공하는 'SendPacket' 함수를 호출한다. 수신의 경우 'OnRecv' 이벤트 함수(called by lib's thread)를 재정의하여 수신된 메시지에 따른 컨텐츠 단의 로직 코드를 구현한다. 
+
 직렬화 버퍼의 편이성과 라이브러리가 제공하는 함수 또는 이벤트를 통해 네트워크 작업을 추상화하여 컨텐츠 개발에 집중할 수 있다. 보다 더 빠르면서 안전한 개발이 가능해졌지만, 직렬화 버퍼의 사용과 수신 이벤트 함수 내에서의 링버퍼 파싱 및 메시지 타입에 따른 분류가 불가피하기에 송수신 과정이 완전한 추상화가 이루어졌다고 보기 어렵다. 이 과정들까지 라이브러리 단에 맡기며, 송수신의 모든 과정을 함수로 추상화한다. JiniNet 라이브러리가 이 RPC 개념 및 로직이 적용된 네트워크 코어 라이브러리이며, 여기에 나아가 본 프로젝트는 서버-클라이언트 간 송수신하는 패킷(메시지)를 명세할 수 있는 자동화 툴의 제작을 담았다. 
 
-![image](https://github.com/user-attachments/assets/9d82e045-5633-48f1-a487-0918b67177f2)
-
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/9d82e045-5633-48f1-a487-0918b67177f2" width="1000">
+  <img src="https://velog.velcdn.com/images/jinh2352/post/fdbeba68-f5e6-467c-8961-24b35b53eb4e/image.png" width="1000">
 </p>
 <p align="center">
   <em>source: https://nesoy.github.io/articles/2019-07/RPC</em>
@@ -24,13 +23,13 @@ https://github.com/JINs-software/JiniNet
 컨텐츠 구현 시 가상 함수로 선언된 각 메시지 함수를 재정의하여 메시지 필드 값들을 인자로 전달받아 메시지 수신에 따른 컨텐츠 코드를 구현한다. 이 함수들의 선언을 제공하는 것이 스텁(Stub) 클래스이다.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/8d25a05c-c3a3-4dc2-9a32-9442ca2ad259" width="1000">
+  <img src="https://velog.velcdn.com/images/jinh2352/post/0d41d2a8-f517-4cb2-9a76-ff75024c2917/image.png" width="1000">
 </p>
 
 ---
 
 ### \[JPD_Compiler_IDE\]
-#### JPD Compile
+### JPD Compile
 JiniNet에 포함된 RPC 모듈을 사용하기 위한 자동화 코드 생성 및 활용의 첫 시작은 Json 파일에 서버-클라이언트 간 주고 받을 프로토콜 메시지들에 대한 명세이다. 
 
 ```json
@@ -90,7 +89,7 @@ JiniNet에 포함된 RPC 모듈을 사용하기 위한 자동화 코드 생성 �
 클라이언트의 경우 유니티의 C# 스크립트 형태의 RPC 컴포넌트 코드가 생성된다. 마찬가지로 프록시 함수의 경우 그 송신을 추상화한 정의까지 구현되어 있으며, 스텁의 경우 메시지 수신 시 수행 로직을 재정의하여 구현하도록 추상 클래스로 제공된다. 
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/cade64ce-435a-4597-9eb5-af63155d8cc2" width="1000">
+  <img src="https://velog.velcdn.com/images/jinh2352/post/dbb1a019-36b1-4266-8436-e60b926452b6/image.png" width="1000">
 </p>
 
 * JiniNet: https://github.com/JINs-software/JiniNet
@@ -99,10 +98,10 @@ JiniNet에 포함된 RPC 모듈을 사용하기 위한 자동화 코드 생성 �
 
 <B></B>
 
-#### JPD IDE
+### JPD IDE
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0ebddbe2-e1ec-4b23-9bdc-48c0ee28cb41" width="1000">
+  <img src="https://velog.velcdn.com/images/jinh2352/post/b6c5a9a6-0615-4403-ad77-50d302c5c8cb/image.png" width="1000">
 </p>
 
 Json 파일을 통한 직접적인 명세만으로 프로토콜을 정의하는 것에 두 가지 불편한 점이 존재하였다. 하나는 메시지 명세가 장황해질 경우 가독성이 떨어졌다는 것이고, 또 다른 하나는 명세 과정에서 실수가 발생할 수 있다는 것이다. JPD(JiniNet Protocol Define)의 자체적인 문법에 맞는 Json을 작성하는 과정에서 문법을 어긋내 작성하는 경우와 Json 자체의 문법을 어긋내는 경우 더러 발생하였다.
@@ -143,7 +142,7 @@ JPD IDE 개발의 또 다른 목적 중 하나는 유니티 개발 실습을 수
 
 \[Message\] 항목은 서버-클라이언트 간 주고 받을 메시지(패킷)에 대한 정의 및 수정을 하는 곳이다.
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/ae303174-781f-4320-ae4c-cd3ed37ced7a/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/ae303174-781f-4320-ae4c-cd3ed37ced7a/image.png" width="400">
 
 * Valid Code: 서버-클라이언트 간 미리 정의된 정적인 값의 코드(메시지 헤더에 포함되며 규약되지 않은 패킷 또는 비정상적인 패킷을 식별하는 코드)
 
@@ -198,11 +197,11 @@ JPD IDE 개발의 또 다른 목적 중 하나는 유니티 개발 실습을 수
 	
 enum의 정의가 많아지면 서버-클라 중 한 쪽에서 누락이 발생한 경우가 종종 있었고, 이에 은근 골치 아프던 상황이 종종 발생하였다. 따라서 툴에 enum 정의를 할 수 있도록 기능을 추가하였다.
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/3ee71fa3-544b-4983-a7a8-c825175111f3/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/3ee71fa3-544b-4983-a7a8-c825175111f3/image.png" width="400">
 
 아래 define으로 정의된 방향 관련 정적 데이터를 enum화 시켜보면,
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/f51de627-9741-4d93-9a36-2841816e3c3a/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/f51de627-9741-4d93-9a36-2841816e3c3a/image.png" width="300">
 
 공란의 'Enum' 입력창에 적절한 enum 이름을 입력하고 'Ok' 버튼을 누르면 'Enum List'에 추가된다.
 
@@ -210,25 +209,25 @@ enum의 정의가 많아지면 서버-클라 중 한 쪽에서 누락이 발생�
 
 메시지 정의와 마찬가지로 'Add' 버튼을 눌러 enum 필드를 추가할 수 있다. 
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/3ad1eae6-b0be-467f-a2bc-171893a523cb/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/3ad1eae6-b0be-467f-a2bc-171893a523cb/image.png" width="400">
 
 'Save Json'을 눌러 json 파일을 저장하면 추가된 enum 항목을 확인할 수 있다.
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/5091306c-cb21-46d1-8d5a-6f7432a35c5c/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/5091306c-cb21-46d1-8d5a-6f7432a35c5c/image.png" width="400">
 
 #### 5. Const 편집
 
 Enum 편집 기능 추가와 비슷한 맥락으로 서버-클라 공통으로 사용되는 const를 추가 및 편집하는 기능을 툴에 추가하였다. 'Const' 토글 선택을 통해 진입한다.
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/b5fe4d1d-e481-48a7-b5c1-3166da5ed3a1/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/b5fe4d1d-e481-48a7-b5c1-3166da5ed3a1/image.png" width="400">
 
 아래와 같은 const 멤버를 같는 구조체를 생성할 수 있다.
 
 <img src="https://velog.velcdn.com/images/jinh2352/post/5f6df291-6ad2-45ea-9e27-20b44e690825/image.png" width="500">
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/afef9eda-d32a-4c32-92d9-44e4c01f4e60/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/afef9eda-d32a-4c32-92d9-44e4c01f4e60/image.png" width="400">
 
-<img src="https://velog.velcdn.com/images/jinh2352/post/82b50111-787c-463e-b084-8fef26f59441/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/82b50111-787c-463e-b084-8fef26f59441/image.png" width="400">
 <em>(Json 파일)</em>
 
 ---
@@ -265,51 +264,61 @@ Enum 편집 기능 추가와 비슷한 맥락으로 서버-클라 공통으로 �
 구현한 스텁 클래스의 인스턴스와 프록시 객체를 생성하고 이를 서버 객체(JNetServer)에 부착하면 된다. 이 과정을 main 함수의 시작 시 초기화 과정으로 수행할 것이므로 main.cpp에 컴파일이 필요한 파일들을 포함한다.
 여러 콘텐츠 파일에서 프록시 함수를 호출할 수 있도록 전역 변수 선언을 하였으며(스텁 객체는 컨텐츠에서 직접 접근하지 않음), 다른 파일에선 'extern' 키워드와 함께 선언하여 파일 간 중복 정의를 막는다.
 	
-(main.cpp, proxy 및 comm 포함)
+<img src="https://velog.velcdn.com/images/jinh2352/post/043a37fe-bad2-460f-9741-b7cf57aaeddb/image.png" width="500">
+<em>(main.cpp, proxy 및 comm 포함)</em>
 	
-	
-(main.cpp, RPC 객체 attach)
-	
-	
-(Contents.cpp, 프록시 객체 함수를 호출하는 컨텐츠 코드 파일)
-	
-	
-(Contents.cpp, 프록시 함수 호출)
-	
-	
+<img src="https://velog.velcdn.com/images/jinh2352/post/776194f6-a059-43f6-b09e-933c5926eaa9/image.png" width="500">
+<em>(main.cpp, RPC 객체 attach)</em>
+
+<img src="https://velog.velcdn.com/images/jinh2352/post/c45c2256-cb89-44e7-9a57-6d4798754a43/image.png" width="500">
+<em>(Contents.cpp, 프록시 객체 함수를 호출하는 컨텐츠 코드 파일)</em>
+
+<img src="https://velog.velcdn.com/images/jinh2352/post/f2d473e6-7a3e-4028-810f-247a15364c8b/image.png" width="500">
+<em>(Contents.cpp, 프록시 함수 호출)</em>
+
+
 ### 클라이언트 코드 적용
 클라이언트 자동화 코드 생성 경로에 아래와 같이 코드가 생성된다. 
 
+<img src="https://velog.velcdn.com/images/jinh2352/post/3f7634de-9f1c-4682-aa58-5540e3dcffae/image.png" width="300">
 
 #### 1. RPC
 RPC 클래스는 싱글톤으로 인스턴스화 된다. 이 싱글톤 객체의 proxy 정적 멤버를 통해 proxy 함수를 호출할 수 있다. 또한 스텁 컴포넌트를 부착(Attach)함으로써 메시지 수신 시 이에 맵핑되는 함수를 자동으로 호출되도록 해준다.
 * AttachStub / DetachStub: 스텁 컴포넌트를 부착함으로써 재정의를 통해 구현한 메시지 처리 멤버 함수를 자동 호출되도록 함. RPC의 이벤트 핸들러 객체에 함수를 등록하고, RPC는 메시지 수신 시 이 핸들러에 등록된 함수를 Invoke 함. 
 반대로 DetachStub은 부착되었던 스텁 컴포넌트에 대한 메시지 처리 함수 호출이 이루어지지 않도록 맵핑 관계를 끊는다. 주로 스텁 컴포넌트는 해당 스텁의 네임 스페이스 메시지를 처리하기 위한 씬 상의 객체에 부착되는데, 씬 전환 시 이 객체가 파괴되면, RPC에서는 파괴된 객체의 스텁 컴포넌트 함수를 호출할 위험이 있다.
+
+ <img src="https://velog.velcdn.com/images/jinh2352/post/6deab185-fef0-4168-994f-d45ff5339916/image.png" width="500">
 		
+ AttachStub, DetachStub은 스텁 컴포넌트 생성 시 그 부모 스텁 클래스(이미 정의된 추상 클래스)의 Init 함수와 Clear 함수를 호출함으로써 수행된다. 부모의 Init 함수와 Clear 함수 또한 유니티 엔진의 Start, OnDestroy 함수 호출에 의존하기에 개발자는 관여할 바 없다.
+
+ <img src="https://velog.velcdn.com/images/jinh2352/post/6b4e50d7-7561-4fdd-a929-8d5f338742db/image.png" width="500">
+ <em>(Stub.cs)</em>
 		
-AttachStub, DetachStub은 스텁 컴포넌트 생성 시 그 부모 스텁 클래스(이미 정의된 추상 클래스)의 Init 함수와 Clear 함수를 호출함으로써 수행된다. 부모의 Init 함수와 Clear 함수 또한 유니티 엔진의 Start, OnDestroy 함수 호출에 의존하기에 개발자는 관여할 바 없다.
-(Stub.cs)
-		
-	
-(FightGameCrtDel.cs)
-		
-		
-		
+ <img src="https://velog.velcdn.com/images/jinh2352/post/ddb3b15b-c0b2-44ce-8504-ae4a14c30add/image.png" width="500">
+ <em>(FightGameCrtDel.cs)</em>
+
 * Update: RPC 컴포넌트가 부착된 싱글톤 객체의 Update 함수에서는 메시지 수신 및 메시지 타입에 따른 스텁 함수 호출을 수행
+
+ <img src="https://velog.velcdn.com/images/jinh2352/post/b5c1314e-1e5c-46aa-8599-f4df8d74b892/image.png" width="500">
+
 		
 	
 #### 2. Proxy
 자동화로 생성된 메시지 송신 함수들이 정의된다. RPC 싱글톤 객체가 Proxy 객체를 생성해 참조하기에 메시지 송신 필요 시 RPC 전역 싱글톤 객체를 통해 proxy 멤버의 함수 호출만 하면 된다. 메시지 필드 지정은 함수 인수 전달로 추상화된다. 
-	
+
+<img src="https://velog.velcdn.com/images/jinh2352/post/45bb6026-fb53-479f-bf56-acc44fb97456/image.png" width="500">
 
 (프록시 함수 호출 예, 플레이어가 제어를 컨트롤하는 컴포넌트에서 키보드 입력을 처리하여 이동 중지 및 공격 패킷을 송신 상황)
 	
-	
+<img src="https://velog.velcdn.com/images/jinh2352/post/bc012042-4c34-4839-aed9-33a97da165e7/image.png" width="500">
 
 #### 3. Stub
 스텁의 경우 서버 측 사용과 유사하게 미리 정의된 스텁 클래스를 상속받아 가상 함수를 재정의하여 동적으로 오버라이딩되도록 한다.
 Stub.cs에는 정의한 메시지 네임 스페이스 별로 클래스가 정의되며, 각 추상 클래스의 자식 클래스가 하나의 파일로 생성된다. 
 	
-(Stub.cs)
-	
-(FightGameCrtDel.cs)
+<img src="https://velog.velcdn.com/images/jinh2352/post/26983eaf-21ae-465f-9293-feec840b4b94/image.png" width="500">
+<img src="https://velog.velcdn.com/images/jinh2352/post/76cc2023-2cb2-4cf7-bc3a-642c70a6504d/image.png" width="500">
+<em>(Stub.cs)</em>
+
+<img src="https://velog.velcdn.com/images/jinh2352/post/025db8a1-82f9-44ce-a1f3-719ae0f6f186/image.png" width="500">
+<em>(FightGameCrtDel.cs)</em>
